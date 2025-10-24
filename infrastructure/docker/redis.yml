@@ -1,0 +1,68 @@
+version: "3.8"
+
+services:
+  redis:
+    image: redis:7.2-alpine
+    container_name: video_converter_redis
+    command: redis-server /usr/local/etc/redis/redis.conf
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - redis_logs:/var/log/redis
+      - ../database/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    networks:
+      - video_converter_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "dev_redis_password_123", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    sysctls:
+      - net.core.somaxconn=65535
+    ulimits:
+      memlock: -1
+
+  # Redis Commander for database administration (optional)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: video_converter_redis_commander
+    environment:
+      REDIS_HOSTS: local:redis:6379:0:dev_redis_password_123
+      HTTP_USER: admin
+      HTTP_PASSWORD: admin123
+    ports:
+      - "8082:8081"
+    networks:
+      - video_converter_network
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  # Redis Insight for advanced monitoring (optional)
+  redis-insight:
+    image: redislabs/redisinsight:latest
+    container_name: video_converter_redis_insight
+    ports:
+      - "8083:8001"
+    volumes:
+      - redis_insight_data:/db
+    networks:
+      - video_converter_network
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+    driver: local
+  redis_logs:
+    driver: local
+  redis_insight_data:
+    driver: local
+
+networks:
+  video_converter_network:
+    driver: bridge

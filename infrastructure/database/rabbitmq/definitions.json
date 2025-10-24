@@ -1,0 +1,219 @@
+{
+  "rabbit_version": "3.12.0",
+  "rabbitmq_version": "3.12.0",
+  "product_name": "RabbitMQ",
+  "product_version": "3.12.0",
+  "users": [
+    {
+      "name": "admin",
+      "password_hash": "gqM2ULfIyXo8ZuXaJ8/5IA7HZbXCPYCZbvf7VQqJzqk=",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": ["administrator"]
+    },
+    {
+      "name": "app_user",
+      "password_hash": "gqM2ULfIyXo8ZuXaJ8/5IA7HZbXCPYCZbvf7VQqJzqk=",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": ["management"]
+    }
+  ],
+  "vhosts": [
+    {
+      "name": "video_converter"
+    }
+  ],
+  "permissions": [
+    {
+      "user": "admin",
+      "vhost": "video_converter",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    },
+    {
+      "user": "app_user",
+      "vhost": "video_converter",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "topic_permissions": [],
+  "parameters": [],
+  "global_parameters": [
+    {
+      "name": "cluster_name",
+      "value": "video_converter_cluster"
+    }
+  ],
+  "policies": [
+    {
+      "vhost": "video_converter",
+      "name": "ha-all",
+      "pattern": ".*",
+      "apply-to": "all",
+      "definition": {
+        "ha-mode": "all",
+        "ha-sync-mode": "automatic"
+      },
+      "priority": 0
+    },
+    {
+      "vhost": "video_converter",
+      "name": "dlx-policy",
+      "pattern": "^(video|notification|analytics)\\.",
+      "apply-to": "queues",
+      "definition": {
+        "dead-letter-exchange": "dlx.exchange",
+        "dead-letter-routing-key": "failed",
+        "message-ttl": 3600000
+      },
+      "priority": 1
+    }
+  ],
+  "queues": [
+    {
+      "name": "video.processing.queue",
+      "vhost": "video_converter",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 3600000,
+        "x-dead-letter-exchange": "dlx.exchange",
+        "x-dead-letter-routing-key": "video.failed",
+        "x-max-retries": 3
+      }
+    },
+    {
+      "name": "video.conversion.queue",
+      "vhost": "video_converter",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 7200000,
+        "x-dead-letter-exchange": "dlx.exchange",
+        "x-dead-letter-routing-key": "conversion.failed",
+        "x-max-retries": 2
+      }
+    },
+    {
+      "name": "analytics.processing.queue",
+      "vhost": "video_converter",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 1800000,
+        "x-dead-letter-exchange": "dlx.exchange",
+        "x-dead-letter-routing-key": "analytics.failed",
+        "x-max-retries": 3
+      }
+    },
+    {
+      "name": "notification.email.queue",
+      "vhost": "video_converter",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 600000,
+        "x-dead-letter-exchange": "dlx.exchange",
+        "x-dead-letter-routing-key": "notification.failed",
+        "x-max-retries": 5
+      }
+    },
+    {
+      "name": "dlx.failed.queue",
+      "vhost": "video_converter",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "video.exchange",
+      "vhost": "video_converter",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "analytics.exchange",
+      "vhost": "video_converter",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "notification.exchange",
+      "vhost": "video_converter",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "dlx.exchange",
+      "vhost": "video_converter",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "video.exchange",
+      "vhost": "video_converter",
+      "destination": "video.processing.queue",
+      "destination_type": "queue",
+      "routing_key": "video.uploaded",
+      "arguments": {}
+    },
+    {
+      "source": "video.exchange",
+      "vhost": "video_converter",
+      "destination": "video.conversion.queue",
+      "destination_type": "queue",
+      "routing_key": "video.convert",
+      "arguments": {}
+    },
+    {
+      "source": "video.exchange",
+      "vhost": "video_converter",
+      "destination": "analytics.processing.queue",
+      "destination_type": "queue",
+      "routing_key": "video.analyze",
+      "arguments": {}
+    },
+    {
+      "source": "analytics.exchange",
+      "vhost": "video_converter",
+      "destination": "analytics.processing.queue",
+      "destination_type": "queue",
+      "routing_key": "analytics.*",
+      "arguments": {}
+    },
+    {
+      "source": "notification.exchange",
+      "vhost": "video_converter",
+      "destination": "notification.email.queue",
+      "destination_type": "queue",
+      "routing_key": "email",
+      "arguments": {}
+    },
+    {
+      "source": "dlx.exchange",
+      "vhost": "video_converter",
+      "destination": "dlx.failed.queue",
+      "destination_type": "queue",
+      "routing_key": "failed",
+      "arguments": {}
+    }
+  ]
+}

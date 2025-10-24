@@ -1,0 +1,107 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+  labels:
+    app: gateway-service
+data:
+  PORT: '8080'
+  MONGODB_URI: 'mongodb://mongodb:27017/videoconverter'
+  REDIS_URL: 'redis://:dev123@redis:6379'
+  AUTH_SERVICE_URL: 'auth-service:50051'
+  ANALYTICS_SERVICE_URL: 'analytics-service:8000'
+  MAX_FILE_SIZE: '100MB'
+  UPLOAD_TIMEOUT: '300s'
+  RATE_LIMIT_REQUESTS: '100'
+  RATE_LIMIT_WINDOW: '60s'
+  LOG_LEVEL: 'info'
+  CORS_ORIGINS: '*'
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: auth-config
+  labels:
+    app: auth-service
+data:
+  PORT: '50051'
+  HTTP_PORT: '8081'
+  POSTGRES_HOST: 'postgresql'
+  POSTGRES_PORT: '5432'
+  POSTGRES_DB: 'auth'
+  JWT_EXPIRY: '24h'
+  REFRESH_TOKEN_EXPIRY: '168h'
+  BCRYPT_COST: '12'
+  LOG_LEVEL: 'info'
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: converter-config
+  labels:
+    app: converter-service
+data:
+  MONGODB_URI: 'mongodb://mongodb:27017/videoconverter'
+  RABBITMQ_URL: 'amqp://admin:dev123@rabbitmq:5672/'
+  REDIS_URL: 'redis://:dev123@redis:6379'
+  WORKER_POOL_SIZE: '5'
+  MAX_CONCURRENT_JOBS: '10'
+  TEMP_DIR: '/tmp/conversions'
+  FFMPEG_QUALITY: '192k'
+  LOG_LEVEL: 'info'
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: analytics-config
+  labels:
+    app: analytics-service
+data:
+  PORT: '8000'
+  MONGODB_URI: 'mongodb://mongodb:27017/videoconverter'
+  RABBITMQ_URL: 'amqp://admin:dev123@rabbitmq:5672/'
+  REDIS_URL: 'redis://:dev123@redis:6379'
+  ML_MODEL_PATH: '/app/models'
+  THUMBNAIL_COUNT: '3'
+  QUALITY_THRESHOLD: '0.7'
+  LOG_LEVEL: 'info'
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: realtime-config
+  labels:
+    app: realtime-service
+data:
+  PORT: '3001'
+  REDIS_URL: 'redis://:dev123@redis:6379'
+  CORS_ORIGINS: '*'
+  HEARTBEAT_INTERVAL: '30000'
+  CONNECTION_TIMEOUT: '60000'
+  LOG_LEVEL: 'info'
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+  labels:
+    app: frontend-service
+data:
+  PORT: '3000'
+  NEXT_PUBLIC_API_URL: 'http://gateway-service:8080'
+  NEXT_PUBLIC_REALTIME_URL: 'http://realtime-service:3001'
+  NODE_ENV: 'production'
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: notification-config
+  labels:
+    app: notification-service
+data:
+  RABBITMQ_URL: 'amqp://admin:dev123@rabbitmq:5672/'
+  SMTP_HOST: 'smtp.gmail.com'
+  SMTP_PORT: '587'
+  EMAIL_FROM: 'noreply@videoconverter.com'
+  TEMPLATE_DIR: '/app/templates'
+  LOG_LEVEL: 'info'

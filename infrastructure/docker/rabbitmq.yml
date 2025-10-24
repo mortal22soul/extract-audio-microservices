@@ -1,0 +1,75 @@
+version: "3.8"
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: video_converter_rabbitmq
+    hostname: rabbitmq-1
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin_password_123
+      RABBITMQ_DEFAULT_VHOST: video_converter
+      RABBITMQ_ERLANG_COOKIE: video_converter_cookie_secret
+    ports:
+      - "5672:5672" # AMQP port
+      - "15672:15672" # Management UI port
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - rabbitmq_logs:/var/log/rabbitmq
+      - ../database/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ../database/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+    networks:
+      - video_converter_network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.rabbitmq.rule=Host(`rabbitmq.localhost`)"
+      - "traefik.http.services.rabbitmq.loadbalancer.server.port=15672"
+
+  # RabbitMQ cluster node 2 (for future scaling)
+  rabbitmq-2:
+    image: rabbitmq:3.12-management-alpine
+    container_name: video_converter_rabbitmq_2
+    hostname: rabbitmq-2
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin_password_123
+      RABBITMQ_DEFAULT_VHOST: video_converter
+      RABBITMQ_ERLANG_COOKIE: video_converter_cookie_secret
+    volumes:
+      - rabbitmq_2_data:/var/lib/rabbitmq
+      - rabbitmq_2_logs:/var/log/rabbitmq
+      - ../database/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    networks:
+      - video_converter_network
+    depends_on:
+      - rabbitmq
+    profiles:
+      - cluster
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+volumes:
+  rabbitmq_data:
+    driver: local
+  rabbitmq_logs:
+    driver: local
+  rabbitmq_2_data:
+    driver: local
+  rabbitmq_2_logs:
+    driver: local
+
+networks:
+  video_converter_network:
+    driver: bridge

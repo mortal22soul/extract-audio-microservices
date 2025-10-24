@@ -1,0 +1,184 @@
+version: '3.8'
+
+services:
+  # Test Databases
+  postgres-test:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: video_converter_test
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_pass
+    ports:
+      - '5433:5432'
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U test_user -d video_converter_test']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mongodb-test:
+    image: mongo:7.0
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: test_user
+      MONGO_INITDB_ROOT_PASSWORD: test_pass
+      MONGO_INITDB_DATABASE: video_converter_test
+    ports:
+      - '27018:27017'
+    volumes:
+      - mongodb_test_data:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis-test:
+    image: redis:7-alpine
+    command: redis-server --requirepass test_pass
+    ports:
+      - '6380:6379'
+    volumes:
+      - redis_test_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', 'test_pass', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq-test:
+    image: rabbitmq:3.12-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: test_user
+      RABBITMQ_DEFAULT_PASS: test_pass
+    ports:
+      - '5673:5672'
+      - '15673:15672'
+    volumes:
+      - rabbitmq_test_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # Test Services
+  auth-service-test:
+    build:
+      context: ../../services/auth
+      dockerfile: Dockerfile.dev
+    environment:
+      - DB_HOST=postgres-test
+      - DB_PORT=5432
+      - DB_NAME=video_converter_test
+      - DB_USER=test_user
+      - DB_PASSWORD=test_pass
+      - JWT_SECRET=test_jwt_secret_key_for_integration_tests
+      - GRPC_PORT=50051
+      - HTTP_PORT=8081
+    ports:
+      - '50051:50051'
+      - '8081:8081'
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'grpc_health_probe', '-addr=:50051']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  gateway-service-test:
+    build:
+      context: ../../services/gateway
+      dockerfile: Dockerfile.dev
+    environment:
+      - AUTH_SERVICE_URL=auth-service-test:50051
+      - ANALYTICS_SERVICE_URL=analytics-service-test:50052
+      - MONGODB_URI=mongodb://test_user:test_pass@mongodb-test:27017/video_converter_test
+      - REDIS_URL=redis://:test_pass@redis-test:6379
+      - HTTP_PORT=8080
+    ports:
+      - '8080:8080'
+    depends_on:
+      auth-service-test:
+        condition: service_healthy
+      mongodb-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8080/health']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  converter-service-test:
+    build:
+      context: ../../services/converter
+      dockerfile: Dockerfile.dev
+    environment:
+      - MONGODB_URI=mongodb://test_user:test_pass@mongodb-test:27017/video_converter_test
+      - RABBITMQ_URL=amqp://test_user:test_pass@rabbitmq-test:5672/
+      - REDIS_URL=redis://:test_pass@redis-test:6379
+      - WORKER_COUNT=2
+    depends_on:
+      mongodb-test:
+        condition: service_healthy
+      rabbitmq-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+
+  analytics-service-test:
+    build:
+      context: ../../services/analytics
+      dockerfile: Dockerfile.dev
+    environment:
+      - MONGODB_URI=mongodb://test_user:test_pass@mongodb-test:27017/video_converter_test
+      - RABBITMQ_URL=amqp://test_user:test_pass@rabbitmq-test:5672/
+      - GRPC_PORT=50052
+      - HTTP_PORT=8000
+    ports:
+      - '50052:50052'
+      - '8000:8000'
+    depends_on:
+      mongodb-test:
+        condition: service_healthy
+      rabbitmq-test:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'grpc_health_probe', '-addr=:50052']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  realtime-service-test:
+    build:
+      context: ../../services/realtime
+      dockerfile: Dockerfile.dev
+    environment:
+      - REDIS_URL=redis://:test_pass@redis-test:6379
+      - JWT_SECRET=test_jwt_secret_key_for_integration_tests
+      - PORT=3001
+    ports:
+      - '3001:3001'
+    depends_on:
+      redis-test:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3001/health']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  postgres_test_data:
+  mongodb_test_data:
+  redis_test_data:
+  rabbitmq_test_data:
+
+networks:
+  default:
+    name: integration-test-network

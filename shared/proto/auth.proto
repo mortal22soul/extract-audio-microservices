@@ -1,0 +1,95 @@
+syntax = "proto3";
+
+package auth;
+
+import "shared/proto/common.proto";
+
+option go_package = "github.com/video-converter/shared/proto/gen/go/shared/proto";
+
+// Authentication service interfaces
+
+service AuthService {
+  // Validate JWT token and return user information
+  rpc ValidateToken(TokenRequest) returns (TokenResponse);
+  
+  // Get user information by user ID
+  rpc GetUserInfo(UserRequest) returns (UserResponse);
+  
+  // Refresh JWT token
+  rpc RefreshToken(RefreshRequest) returns (TokenResponse);
+  
+  // Register new user
+  rpc RegisterUser(RegisterRequest) returns (RegisterResponse);
+  
+  // Login user
+  rpc LoginUser(LoginRequest) returns (LoginResponse);
+  
+  // Logout user
+  rpc LogoutUser(LogoutRequest) returns (LogoutResponse);
+}
+
+message TokenRequest {
+  string token = 1;
+}
+
+message TokenResponse {
+  bool valid = 1;
+  string user_id = 2;
+  string email = 3;
+  common.Timestamp expires_at = 4;
+}
+
+message UserRequest {
+  string user_id = 1;
+}
+
+message UserResponse {
+  string user_id = 1;
+  string email = 2;
+  string first_name = 3;
+  string last_name = 4;
+  bool is_active = 5;
+  common.Timestamp created_at = 6;
+}
+
+message RefreshRequest {
+  string refresh_token = 1;
+}
+
+message RegisterRequest {
+  string email = 1;
+  string password = 2;
+  string first_name = 3;
+  string last_name = 4;
+}
+
+message RegisterResponse {
+  bool success = 1;
+  string user_id = 2;
+  string message = 3;
+  common.Error error = 4;
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  bool success = 1;
+  string access_token = 2;
+  string refresh_token = 3;
+  UserResponse user = 4;
+  common.Error error = 5;
+}
+
+message LogoutRequest {
+  string refresh_token = 1;
+  string access_token = 2; // Optional, for blacklisting
+}
+
+message LogoutResponse {
+  bool success = 1;
+  string message = 2;
+  common.Error error = 3;
+}

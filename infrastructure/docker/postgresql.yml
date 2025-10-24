@@ -1,0 +1,34 @@
+version: "3.8"
+
+services:
+  postgresql:
+    image: postgres:15-alpine
+    container_name: video_converter_postgres
+    environment:
+      POSTGRES_DB: video_converter_auth
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_admin_123
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../database/postgresql/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ../database/postgresql/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+    networks:
+      - video_converter_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d video_converter_auth"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  video_converter_network:
+    driver: bridge

@@ -1,0 +1,148 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgresql-backup
+  labels:
+    app: postgresql-backup
+spec:
+  schedule: '0 2 * * *' # Daily at 2 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: postgres-backup
+              image: postgres:15-alpine
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  BACKUP_FILE="/backup/postgresql-$(date +%Y%m%d-%H%M%S).sql"
+                  pg_dump -h postgresql -U $POSTGRES_USER -d $POSTGRES_DB > $BACKUP_FILE
+                  echo "Backup completed: $BACKUP_FILE"
+
+                  # Keep only last 7 days of backups
+                  find /backup -name "postgresql-*.sql" -mtime +7 -delete
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgresql-secret
+                      key: POSTGRES_PASSWORD
+                - name: POSTGRES_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgresql-secret
+                      key: POSTGRES_USER
+                - name: POSTGRES_DB
+                  valueFrom:
+                    configMapKeyRef:
+                      name: postgresql-config
+                      key: POSTGRES_DB
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /backup
+          volumes:
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: backup-storage-pvc
+          restartPolicy: OnFailure
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mongodb-backup
+  labels:
+    app: mongodb-backup
+spec:
+  schedule: '0 3 * * *' # Daily at 3 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: mongo-backup
+              image: mongo:7.0
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  BACKUP_DIR="/backup/mongodb-$(date +%Y%m%d-%H%M%S)"
+                  mongodump --host mongodb:27017 --username $MONGODB_USERNAME --password $MONGODB_PASSWORD --authenticationDatabase videoconverter --db videoconverter --out $BACKUP_DIR
+                  echo "Backup completed: $BACKUP_DIR"
+
+                  # Keep only last 7 days of backups
+                  find /backup -name "mongodb-*" -type d -mtime +7 -exec rm -rf {} +
+              env:
+                - name: MONGODB_USERNAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: mongodb-secret
+                      key: MONGODB_USERNAME
+                - name: MONGODB_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: mongodb-secret
+                      key: MONGODB_PASSWORD
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /backup
+          volumes:
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: backup-storage-pvc
+          restartPolicy: OnFailure
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: redis-backup
+  labels:
+    app: redis-backup
+spec:
+  schedule: '0 4 * * *' # Daily at 4 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: redis-backup
+              image: redis:7-alpine
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  BACKUP_FILE="/backup/redis-$(date +%Y%m%d-%H%M%S).rdb"
+                  redis-cli -h redis -a $REDIS_PASSWORD --rdb $BACKUP_FILE
+                  echo "Backup completed: $BACKUP_FILE"
+
+                  # Keep only last 7 days of backups
+                  find /backup -name "redis-*.rdb" -mtime +7 -delete
+              env:
+                - name: REDIS_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: redis-secret
+                      key: REDIS_PASSWORD
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /backup
+          volumes:
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: backup-storage-pvc
+          restartPolicy: OnFailure
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backup-storage-pvc
+  labels:
+    app: backup-storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: standard

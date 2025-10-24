@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package common;
+
+option go_package = "github.com/video-converter/shared/proto/gen/go/shared/proto";
+
+// Common message types and enums
+
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  STATUS_PENDING = 1;
+  STATUS_PROCESSING = 2;
+  STATUS_COMPLETED = 3;
+  STATUS_FAILED = 4;
+}
+
+enum VideoFormat {
+  VIDEO_FORMAT_UNSPECIFIED = 0;
+  VIDEO_FORMAT_MP4 = 1;
+  VIDEO_FORMAT_AVI = 2;
+  VIDEO_FORMAT_MOV = 3;
+  VIDEO_FORMAT_MKV = 4;
+  VIDEO_FORMAT_WEBM = 5;
+}
+
+enum AudioFormat {
+  AUDIO_FORMAT_UNSPECIFIED = 0;
+  AUDIO_FORMAT_MP3 = 1;
+  AUDIO_FORMAT_WAV = 2;
+  AUDIO_FORMAT_AAC = 3;
+  AUDIO_FORMAT_FLAC = 4;
+}
+
+message Timestamp {
+  int64 seconds = 1;
+  int32 nanos = 2;
+}
+
+message Error {
+  string code = 1;
+  string message = 2;
+  string details = 3;
+}
+
+message VideoMetadata {
+  string filename = 1;
+  int64 size_bytes = 2;
+  int32 duration_seconds = 3;
+  string resolution = 4;
+  string codec = 5;
+  int32 bitrate = 6;
+  VideoFormat format = 7;
+}
+
+message ConversionJob {
+  string job_id = 1;
+  string user_id = 2;
+  string video_id = 3;
+  VideoMetadata video_metadata = 4;
+  AudioFormat target_format = 5;
+  Status status = 6;
+  int32 progress_percent = 7;
+  Timestamp created_at = 8;
+  Timestamp updated_at = 9;
+  Error error = 10;
+}

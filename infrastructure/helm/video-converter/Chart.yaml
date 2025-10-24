@@ -1,0 +1,36 @@
+apiVersion: v2
+name: video-converter
+description: A Helm chart for Video Converter microservices application
+type: application
+version: 0.1.0
+appVersion: '1.0.0'
+keywords:
+  - video
+  - converter
+  - microservices
+  - go
+  - typescript
+  - python
+home: https://github.com/your-org/video-converter
+sources:
+  - https://github.com/your-org/video-converter
+maintainers:
+  - name: Video Converter Team
+    email: team@videoconverter.com
+dependencies:
+  - name: postgresql
+    version: '12.x.x'
+    repository: 'https://charts.bitnami.com/bitnami'
+    condition: postgresql.enabled
+  - name: mongodb
+    version: '13.x.x'
+    repository: 'https://charts.bitnami.com/bitnami'
+    condition: mongodb.enabled
+  - name: redis
+    version: '18.x.x'
+    repository: 'https://charts.bitnami.com/bitnami'
+    condition: redis.enabled
+  - name: rabbitmq
+    version: '12.x.x'
+    repository: 'https://charts.bitnami.com/bitnami'
+    condition: rabbitmq.enabled

@@ -1,0 +1,120 @@
+syntax = "proto3";
+
+package analytics;
+
+import "shared/proto/common.proto";
+
+option go_package = "github.com/video-converter/shared/proto/gen/go/shared/proto";
+
+// ML service interfaces
+
+service AnalyticsService {
+  // Analyze video content and extract metadata
+  rpc AnalyzeVideo(VideoAnalysisRequest) returns (VideoAnalysisResponse);
+  
+  // Get video quality metrics
+  rpc GetQualityMetrics(QualityRequest) returns (QualityResponse);
+  
+  // Get content-based recommendations
+  rpc GetRecommendations(RecommendationRequest) returns (RecommendationResponse);
+  
+  // Check content safety and moderation
+  rpc CheckContentSafety(SafetyRequest) returns (SafetyResponse);
+  
+  // Generate video thumbnails
+  rpc GenerateThumbnails(ThumbnailRequest) returns (ThumbnailResponse);
+}
+
+message VideoAnalysisRequest {
+  string video_id = 1;
+  string user_id = 2;
+  string video_path = 3;
+  common.VideoMetadata metadata = 4;
+}
+
+message VideoAnalysisResponse {
+  string video_id = 1;
+  QualityMetrics quality = 2;
+  repeated string thumbnails = 3;
+  repeated string tags = 4;
+  SafetyScore safety = 5;
+  common.Error error = 6;
+}
+
+message QualityRequest {
+  string video_id = 1;
+  string video_path = 2;
+}
+
+message QualityResponse {
+  QualityMetrics quality = 1;
+  common.Error error = 2;
+}
+
+message QualityMetrics {
+  float sharpness_score = 1;
+  float brightness_score = 2;
+  float contrast_score = 3;
+  float overall_score = 4;
+  string resolution_category = 5; // "low", "medium", "high", "ultra"
+}
+
+message RecommendationRequest {
+  string user_id = 1;
+  int32 limit = 2;
+  repeated string exclude_video_ids = 3;
+}
+
+message RecommendationResponse {
+  repeated VideoRecommendation recommendations = 1;
+  common.Error error = 2;
+}
+
+message VideoRecommendation {
+  string video_id = 1;
+  string title = 2;
+  float similarity_score = 3;
+  repeated string tags = 4;
+  string thumbnail_url = 5;
+}
+
+message SafetyRequest {
+  string video_id = 1;
+  string video_path = 2;
+}
+
+message SafetyResponse {
+  SafetyScore safety = 1;
+  common.Error error = 2;
+}
+
+message SafetyScore {
+  float overall_score = 1; // 0.0 (unsafe) to 1.0 (safe)
+  bool is_safe = 2;
+  repeated SafetyFlag flags = 3;
+}
+
+message SafetyFlag {
+  string category = 1; // "violence", "adult", "hate", etc.
+  float confidence = 2;
+  string description = 3;
+}
+
+message ThumbnailRequest {
+  string video_id = 1;
+  string video_path = 2;
+  repeated int32 timestamp_seconds = 3; // Specific timestamps to capture
+  int32 count = 4; // Number of thumbnails if timestamps not specified
+}
+
+message ThumbnailResponse {
+  repeated Thumbnail thumbnails = 1;
+  common.Error error = 2;
+}
+
+message Thumbnail {
+  string url = 1;
+  int32 timestamp_seconds = 2;
+  int32 width = 3;
+  int32 height = 4;
+}

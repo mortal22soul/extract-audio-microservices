@@ -1,0 +1,93 @@
+# Staging environment values
+app:
+  environment: staging
+
+# Staging ingress
+ingress:
+  hosts:
+    - host: video-converter.staging.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+        - path: /api
+          pathType: Prefix
+          service: gateway
+        - path: /realtime
+          pathType: Prefix
+          service: realtime
+  tls:
+    - secretName: video-converter-staging-tls
+      hosts:
+        - video-converter.staging.example.com
+
+# Moderate resources for staging
+gateway:
+  replicaCount: 2
+  autoscaling:
+    minReplicas: 2
+    maxReplicas: 5
+
+auth:
+  replicaCount: 2
+  autoscaling:
+    minReplicas: 2
+    maxReplicas: 3
+
+converter:
+  replicaCount: 2
+  autoscaling:
+    minReplicas: 2
+    maxReplicas: 10
+
+analytics:
+  replicaCount: 1
+  autoscaling:
+    minReplicas: 1
+    maxReplicas: 4
+
+realtime:
+  replicaCount: 2
+  autoscaling:
+    minReplicas: 2
+    maxReplicas: 5
+
+frontend:
+  replicaCount: 2
+  autoscaling:
+    minReplicas: 2
+    maxReplicas: 5
+
+notification:
+  replicaCount: 1
+  autoscaling:
+    minReplicas: 1
+    maxReplicas: 3
+
+# Staging database configurations
+postgresql:
+  primary:
+    persistence:
+      size: 20Gi
+
+mongodb:
+  persistence:
+    size: 50Gi
+
+redis:
+  master:
+    persistence:
+      size: 10Gi
+
+rabbitmq:
+  persistence:
+    size: 20Gi
+
+# Enable monitoring in staging
+monitoring:
+  enabled: true
+
+# Enable backup in staging
+backup:
+  enabled: true
+  schedule: '0 3 * * *'

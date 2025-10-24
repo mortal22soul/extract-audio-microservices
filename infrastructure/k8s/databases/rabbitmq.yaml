@@ -1,0 +1,236 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-config
+  labels:
+    app: rabbitmq
+data:
+  enabled_plugins: |
+    [rabbitmq_management,rabbitmq_prometheus,rabbitmq_shovel,rabbitmq_shovel_management].
+  rabbitmq.conf: |
+    # Clustering
+    cluster_formation.peer_discovery_backend = rabbit_peer_discovery_k8s
+    cluster_formation.k8s.host = kubernetes.default.svc.cluster.local
+    cluster_formation.k8s.address_type = hostname
+    cluster_formation.node_cleanup.interval = 30
+    cluster_formation.node_cleanup.only_log_warning = true
+    cluster_partition_handling = autoheal
+
+    # Queue master locator
+    queue_master_locator = min-masters
+
+    # Logging
+    log.console = true
+    log.console.level = info
+
+    # Memory and disk
+    vm_memory_high_watermark.relative = 0.6
+    disk_free_limit.relative = 2.0
+
+    # Management plugin
+    management.tcp.port = 15672
+
+    # Prometheus metrics
+    prometheus.tcp.port = 15692
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rabbitmq-secret
+type: Opaque
+stringData:
+  RABBITMQ_DEFAULT_USER: 'admin'
+  RABBITMQ_DEFAULT_PASS: 'dev123'
+  RABBITMQ_ERLANG_COOKIE: 'rabbitmq-cluster-cookie-123'
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  labels:
+    app: rabbitmq
+spec:
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: 5672
+    - name: management
+      port: 15672
+      targetPort: 15672
+    - name: prometheus
+      port: 15692
+      targetPort: 15692
+  selector:
+    app: rabbitmq
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq-headless
+  labels:
+    app: rabbitmq
+spec:
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: 5672
+    - name: management
+      port: 15672
+      targetPort: 15672
+    - name: prometheus
+      port: 15692
+      targetPort: 15692
+  selector:
+    app: rabbitmq
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rabbitmq
+  labels:
+    app: rabbitmq
+spec:
+  serviceName: rabbitmq-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '15692'
+        prometheus.io/path: '/metrics'
+    spec:
+      securityContext:
+        fsGroup: 999
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3.12-management-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: amqp
+              containerPort: 5672
+              protocol: TCP
+            - name: management
+              containerPort: 15672
+              protocol: TCP
+            - name: prometheus
+              containerPort: 15692
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: rabbitmq-secret
+          env:
+            - name: RABBITMQ_NODENAME
+              value: 'rabbit@$(hostname -f)'
+            - name: K8S_SERVICE_NAME
+              value: 'rabbitmq-headless'
+            - name: RABBITMQ_USE_LONGNAME
+              value: 'true'
+          resources:
+            requests:
+              memory: '512Mi'
+              cpu: '500m'
+            limits:
+              memory: '1Gi'
+              cpu: '1000m'
+          livenessProbe:
+            exec:
+              command:
+                - rabbitmq-diagnostics
+                - -q
+                - ping
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            timeoutSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - rabbitmq-diagnostics
+                - -q
+                - check_running
+            initialDelaySeconds: 20
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 3
+          volumeMounts:
+            - name: rabbitmq-data
+              mountPath: /var/lib/rabbitmq
+            - name: rabbitmq-config-volume
+              mountPath: /etc/rabbitmq
+            - name: rabbitmq-init-volume
+              mountPath: /docker-entrypoint-initdb.d
+          securityContext:
+            runAsUser: 999
+            runAsGroup: 999
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: rabbitmq-config-volume
+          configMap:
+            name: rabbitmq-config
+            defaultMode: 0644
+        - name: rabbitmq-init-volume
+          configMap:
+            name: rabbitmq-init-scripts
+            defaultMode: 0755
+  volumeClaimTemplates:
+    - metadata:
+        name: rabbitmq-data
+        labels:
+          app: rabbitmq
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi
+        storageClassName: standard
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-init-scripts
+  labels:
+    app: rabbitmq
+data:
+  01-setup-queues.sh: |
+    #!/bin/bash
+    set -e
+
+    # Wait for RabbitMQ to be ready
+    until rabbitmqctl node_health_check; do
+      echo "Waiting for RabbitMQ to be ready..."
+      sleep 5
+    done
+
+    # Create exchanges
+    rabbitmqadmin declare exchange name=video.events type=topic durable=true
+    rabbitmqadmin declare exchange name=notification.events type=topic durable=true
+    rabbitmqadmin declare exchange name=analytics.events type=topic durable=true
+
+    # Create queues
+    rabbitmqadmin declare queue name=video.conversion durable=true
+    rabbitmqadmin declare queue name=video.analysis durable=true
+    rabbitmqadmin declare queue name=notification.email durable=true
+
+    # Create dead letter queues
+    rabbitmqadmin declare queue name=video.conversion.dlq durable=true
+    rabbitmqadmin declare queue name=video.analysis.dlq durable=true
+    rabbitmqadmin declare queue name=notification.email.dlq durable=true
+
+    # Bind queues to exchanges
+    rabbitmqadmin declare binding source=video.events destination=video.conversion routing_key=video.uploaded
+    rabbitmqadmin declare binding source=video.events destination=video.analysis routing_key=video.uploaded
+    rabbitmqadmin declare binding source=video.events destination=notification.email routing_key=video.completed
+    rabbitmqadmin declare binding source=video.events destination=notification.email routing_key=video.failed
+
+    echo "RabbitMQ setup completed successfully"

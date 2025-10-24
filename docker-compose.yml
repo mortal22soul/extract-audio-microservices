@@ -1,0 +1,205 @@
+version: '3.8'
+
+services:
+  # Databases
+  postgresql:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: videoconverter
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: dev123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongodb:
+    image: mongo:7
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: dev123
+      MONGO_INITDB_DATABASE: videoconverter
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --requirepass dev123
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "dev123", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: dev123
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 30s
+      retries: 3
+
+  # Application Services
+  auth-service:
+    build:
+      context: ./services/auth
+      dockerfile: Dockerfile.dev
+    environment:
+      GRPC_PORT: 50051
+      DATABASE_URL: postgres://postgres:dev123@postgresql:5432/videoconverter?sslmode=disable
+      JWT_SECRET: dev-jwt-secret-change-in-production
+    ports:
+      - "50051:50051"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    volumes:
+      - ./services/auth:/app
+    restart: unless-stopped
+
+  gateway-service:
+    build:
+      context: ./services/gateway
+      dockerfile: Dockerfile.dev
+    environment:
+      PORT: 8080
+      MONGODB_URI: mongodb://admin:dev123@mongodb:27017/videoconverter?authSource=admin
+      REDIS_URL: redis://:dev123@redis:6379
+      AUTH_SERVICE_URL: auth-service:50051
+      ANALYTICS_SERVICE_URL: analytics-service:8000
+    ports:
+      - "8080:8080"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    volumes:
+      - ./services/gateway:/app
+    restart: unless-stopped
+
+  converter-service:
+    build:
+      context: ./services/converter
+      dockerfile: Dockerfile.dev
+    environment:
+      MONGODB_URI: mongodb://admin:dev123@mongodb:27017/videoconverter?authSource=admin
+      RABBITMQ_URL: amqp://admin:dev123@rabbitmq:5672/
+      REDIS_URL: redis://:dev123@redis:6379
+      WORKER_POOL_SIZE: 5
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/converter:/app
+      - /tmp/video-processing:/tmp/video-processing
+    restart: unless-stopped
+
+  notification-service:
+    build:
+      context: ./services/notification
+      dockerfile: Dockerfile.dev
+    environment:
+      RABBITMQ_URL: amqp://admin:dev123@rabbitmq:5672/
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: 587
+      SMTP_USERNAME: your-email@gmail.com
+      SMTP_PASSWORD: your-app-password
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./services/notification:/app
+    restart: unless-stopped
+
+  analytics-service:
+    build:
+      context: ./services/analytics
+      dockerfile: Dockerfile.dev
+    environment:
+      MONGODB_URI: mongodb://admin:dev123@mongodb:27017/videoconverter?authSource=admin
+      RABBITMQ_URL: amqp://admin:dev123@rabbitmq:5672/
+      REDIS_URL: redis://:dev123@redis:6379
+    ports:
+      - "8000:8000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/analytics:/app
+    restart: unless-stopped
+
+  realtime-service:
+    build:
+      context: ./services/realtime
+      dockerfile: Dockerfile.dev
+    environment:
+      PORT: 3001
+      REDIS_URL: redis://:dev123@redis:6379
+      JWT_SECRET: dev-jwt-secret-change-in-production
+    ports:
+      - "3001:3001"
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/realtime:/app
+    restart: unless-stopped
+
+  frontend-service:
+    build:
+      context: ./services/frontend
+      dockerfile: Dockerfile.dev
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+      NEXT_PUBLIC_REALTIME_URL: http://localhost:3001
+    ports:
+      - "3000:3000"
+    depends_on:
+      - gateway-service
+      - realtime-service
+    volumes:
+      - ./services/frontend:/app
+      - /app/node_modules
+      - /app/.next
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  mongodb_data:
+  redis_data:
+  rabbitmq_data:

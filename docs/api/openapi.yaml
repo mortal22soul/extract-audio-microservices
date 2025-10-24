@@ -1,0 +1,749 @@
+openapi: 3.0.3
+info:
+  title: Video Converter Microservices API
+  description: |
+    A comprehensive video-to-MP3 conversion platform built with modern microservices architecture.
+
+    ## Features
+    - Video upload and conversion to MP3
+    - Real-time progress tracking via WebSocket
+    - ML-powered video analysis and recommendations
+    - User authentication and authorization
+    - Scalable microservices architecture
+
+    ## Architecture
+    The system consists of multiple microservices:
+    - **Gateway Service**: REST API gateway and file handling
+    - **Auth Service**: User authentication and authorization
+    - **Converter Service**: Video-to-MP3 conversion processing
+    - **Analytics Service**: ML-powered video analysis
+    - **Realtime Service**: WebSocket-based real-time updates
+    - **Notification Service**: Email notifications
+
+    ## Authentication
+    Most endpoints require JWT authentication. Include the token in the Authorization header:
+    ```
+    Authorization: Bearer <jwt_token>
+    ```
+
+  version: 1.0.0
+  contact:
+    name: Video Converter API Support
+    email: support@videoconverter.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development server
+  - url: https://api-staging.videoconverter.com/api/v1
+    description: Staging server
+  - url: https://api.videoconverter.com/api/v1
+    description: Production server
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        firstName:
+          type: string
+          example: John
+        lastName:
+          type: string
+          example: Doe
+        isActive:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Video:
+      type: object
+      properties:
+        id:
+          type: string
+          example: 507f1f77bcf86cd799439011
+        userId:
+          type: string
+          example: 507f1f77bcf86cd799439012
+        originalFilename:
+          type: string
+          example: my-video.mp4
+        mimeType:
+          type: string
+          example: video/mp4
+        size:
+          type: integer
+          example: 52428800
+        uploadedAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [uploaded, processing, completed, failed]
+          example: completed
+        conversionJobId:
+          type: string
+          example: 507f1f77bcf86cd799439013
+        mp3FileId:
+          type: string
+          example: 507f1f77bcf86cd799439014
+        metadata:
+          $ref: '#/components/schemas/VideoMetadata'
+        analytics:
+          $ref: '#/components/schemas/VideoAnalytics'
+
+    VideoMetadata:
+      type: object
+      properties:
+        duration:
+          type: number
+          example: 180.5
+        resolution:
+          type: string
+          example: 1920x1080
+        codec:
+          type: string
+          example: h264
+        bitrate:
+          type: integer
+          example: 2500000
+
+    VideoAnalytics:
+      type: object
+      properties:
+        thumbnails:
+          type: array
+          items:
+            type: string
+          example:
+            ['/thumbnails/video1_thumb1.jpg', '/thumbnails/video1_thumb2.jpg']
+        qualityScore:
+          type: number
+          minimum: 0
+          maximum: 100
+          example: 85.5
+        safetyScore:
+          type: number
+          minimum: 0
+          maximum: 100
+          example: 95.2
+        tags:
+          type: array
+          items:
+            type: string
+          example: ['music', 'concert', 'live']
+
+    ConversionJob:
+      type: object
+      properties:
+        id:
+          type: string
+          example: 507f1f77bcf86cd799439013
+        videoId:
+          type: string
+          example: 507f1f77bcf86cd799439011
+        userId:
+          type: string
+          example: 507f1f77bcf86cd799439012
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+          example: processing
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+          example: 75
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        errorMessage:
+          type: string
+          example: 'FFmpeg conversion failed'
+        processingNode:
+          type: string
+          example: converter-pod-abc123
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          example: securePassword123
+
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+        - firstName
+        - lastName
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          minLength: 8
+          example: securePassword123
+        firstName:
+          type: string
+          example: John
+        lastName:
+          type: string
+          example: Doe
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        refreshToken:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        user:
+          $ref: '#/components/schemas/User'
+        expiresAt:
+          type: string
+          format: date-time
+
+    UploadResponse:
+      type: object
+      properties:
+        videoId:
+          type: string
+          example: 507f1f77bcf86cd799439011
+        status:
+          type: string
+          example: uploaded
+        message:
+          type: string
+          example: Video uploaded successfully
+
+    Recommendation:
+      type: object
+      properties:
+        videoId:
+          type: string
+          example: 507f1f77bcf86cd799439011
+        title:
+          type: string
+          example: Similar Music Video
+        score:
+          type: number
+          example: 0.85
+        reason:
+          type: string
+          example: Similar audio features and genre
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Invalid credentials
+        code:
+          type: string
+          example: UNAUTHORIZED
+        details:
+          type: string
+          example: The provided email or password is incorrect
+
+paths:
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticate user and return JWT token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          description: Invalid request format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: User registration
+      description: Register a new user account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '409':
+          description: Email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          description: Invalid request format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh JWT token
+      description: Get a new JWT token using refresh token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: User logout
+      description: Invalidate JWT token and logout user
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Logged out successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /videos/upload:
+    post:
+      tags:
+        - Videos
+      summary: Upload video file
+      description: Upload a video file for conversion to MP3
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                video:
+                  type: string
+                  format: binary
+                  description: Video file to upload
+      responses:
+        '200':
+          description: Video uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+        '400':
+          description: Invalid file format or size
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: File too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /videos/{id}/download:
+    get:
+      tags:
+        - Videos
+      summary: Download converted MP3
+      description: Download the converted MP3 file
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Video ID
+      responses:
+        '200':
+          description: MP3 file download
+          content:
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Video not found or conversion not completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /videos/{id}/status:
+    get:
+      tags:
+        - Videos
+      summary: Get video conversion status
+      description: Get the current status of video conversion
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Video ID
+      responses:
+        '200':
+          description: Video status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversionJob'
+        '404':
+          description: Video not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /videos/history:
+    get:
+      tags:
+        - Videos
+      summary: Get user's video history
+      description: Retrieve list of user's uploaded videos and conversion history
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number for pagination
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+          description: Number of items per page
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [uploaded, processing, completed, failed]
+          description: Filter by conversion status
+      responses:
+        '200':
+          description: Video history retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  videos:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Video'
+                  pagination:
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                      totalPages:
+                        type: integer
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /videos/{id}:
+    delete:
+      tags:
+        - Videos
+      summary: Delete video
+      description: Delete a video and its associated files
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Video ID
+      responses:
+        '200':
+          description: Video deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Video deleted successfully
+        '404':
+          description: Video not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /analytics/recommendations:
+    get:
+      tags:
+        - Analytics
+      summary: Get video recommendations
+      description: Get personalized video recommendations based on user preferences
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+            maximum: 50
+          description: Number of recommendations to return
+      responses:
+        '200':
+          description: Recommendations retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recommendations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Recommendation'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /analytics/videos/{id}/insights:
+    get:
+      tags:
+        - Analytics
+      summary: Get video insights
+      description: Get detailed analytics and insights for a specific video
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Video ID
+      responses:
+        '200':
+          description: Video insights retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  videoId:
+                    type: string
+                  analytics:
+                    $ref: '#/components/schemas/VideoAnalytics'
+                  insights:
+                    type: object
+                    properties:
+                      dominantColors:
+                        type: array
+                        items:
+                          type: string
+                      audioFeatures:
+                        type: object
+                        properties:
+                          tempo:
+                            type: number
+                          key:
+                            type: string
+                          loudness:
+                            type: number
+                      contentCategories:
+                        type: array
+                        items:
+                          type: string
+        '404':
+          description: Video not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /health:
+    get:
+      tags:
+        - System
+      summary: Health check
+      description: Check if the API is healthy and operational
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  timestamp:
+                    type: string
+                    format: date-time
+                  version:
+                    type: string
+                    example: 1.0.0
+                  services:
+                    type: object
+                    properties:
+                      database:
+                        type: string
+                        example: healthy
+                      redis:
+                        type: string
+                        example: healthy
+                      rabbitmq:
+                        type: string
+                        example: healthy
+
+tags:
+  - name: Authentication
+    description: User authentication and authorization
+  - name: Videos
+    description: Video upload, conversion, and management
+  - name: Analytics
+    description: Video analytics and recommendations
+  - name: System
+    description: System health and monitoring

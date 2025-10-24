@@ -1,0 +1,11 @@
+version: v1
+plugins:
+  # Go code generation
+  - plugin: buf.build/protocolbuffers/go
+    out: shared/proto/gen/go
+    opt:
+      - paths=source_relative
+  - plugin: buf.build/grpc/go
+    out: shared/proto/gen/go
+    opt:
+      - paths=source_relative

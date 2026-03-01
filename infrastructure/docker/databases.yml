@@ -1,4 +1,4 @@
-version: "3.8"
+version: '3.8'
 
 # Complete database infrastructure for video converter microservices
 # This compose file includes PostgreSQL, MongoDB, Redis, and RabbitMQ
@@ -14,7 +14,7 @@ services:
       POSTGRES_PASSWORD: postgres_admin_123
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
-      - "5432:5432"
+      - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ../database/postgresql/init.sql:/docker-entrypoint-initdb.d/01-init.sql
@@ -22,14 +22,14 @@ services:
     networks:
       - video_converter_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d video_converter_auth"]
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d video_converter_auth']
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
     restart: unless-stopped
 
-  # MongoDB - File storage with GridFS and video metadata
+  # MongoDB - Video metadata and conversion jobs
   mongodb:
     image: mongo:7.0
     container_name: video_converter_mongodb
@@ -38,23 +38,22 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: admin_password_123
       MONGO_INITDB_DATABASE: video_converter
     ports:
-      - "27017:27017"
+      - '27017:27017'
     volumes:
       - mongodb_data:/data/db
       - mongodb_config:/data/configdb
       - ../database/mongodb/init.js:/docker-entrypoint-initdb.d/01-init.js
       - ../database/mongodb/seed.js:/docker-entrypoint-initdb.d/02-seed.js
-      - ../database/mongodb/gridfs-setup.js:/docker-entrypoint-initdb.d/03-gridfs-setup.js
     networks:
       - video_converter_network
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
     restart: unless-stopped
-    command: ["mongod", "--auth"]
+    command: ['mongod', '--auth']
 
   # Redis - Caching, session storage, and pub/sub messaging
   redis:
@@ -62,7 +61,7 @@ services:
     container_name: video_converter_redis
     command: redis-server /usr/local/etc/redis/redis.conf
     ports:
-      - "6379:6379"
+      - '6379:6379'
     volumes:
       - redis_data:/data
       - redis_logs:/var/log/redis
@@ -70,7 +69,7 @@ services:
     networks:
       - video_converter_network
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "dev_redis_password_123", "ping"]
+      test: ['CMD', 'redis-cli', '-a', 'dev_redis_password_123', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -92,8 +91,8 @@ services:
       RABBITMQ_DEFAULT_VHOST: video_converter
       RABBITMQ_ERLANG_COOKIE: video_converter_cookie_secret
     ports:
-      - "5672:5672" # AMQP port
-      - "15672:15672" # Management UI port
+      - '5672:5672' # AMQP port
+      - '15672:15672' # Management UI port
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
       - rabbitmq_logs:/var/log/rabbitmq
@@ -102,7 +101,7 @@ services:
     networks:
       - video_converter_network
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
       interval: 30s
       timeout: 10s
       retries: 5
@@ -122,7 +121,7 @@ services:
       ME_CONFIG_BASICAUTH_USERNAME: admin
       ME_CONFIG_BASICAUTH_PASSWORD: admin123
     ports:
-      - "8081:8081"
+      - '8081:8081'
     networks:
       - video_converter_network
     depends_on:
@@ -140,7 +139,7 @@ services:
       HTTP_USER: admin
       HTTP_PASSWORD: admin123
     ports:
-      - "8082:8081"
+      - '8082:8081'
     networks:
       - video_converter_network
     depends_on:
@@ -156,9 +155,9 @@ services:
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@example.com
       PGADMIN_DEFAULT_PASSWORD: admin123
-      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
     ports:
-      - "8080:80"
+      - '8080:80'
     volumes:
       - pgadmin_data:/var/lib/pgadmin
     networks:

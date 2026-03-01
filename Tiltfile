@@ -1,42 +1,19 @@
 # Tiltfile for Video Converter Microservices
-load('ext://helm_resource', 'helm_resource', 'helm_repo')
 load('ext://restart_process', 'docker_build_with_restart')
 
 # Configure local Kubernetes cluster
 allow_k8s_contexts(['docker-desktop', 'kind-kind', 'minikube'])
 
-# Add Bitnami Helm repository for databases
-helm_repo('bitnami', 'https://charts.bitnami.com/bitnami')
-
-# Database services
+# Database services (deployed via plain Kubernetes manifests)
 print("Setting up database services...")
 
-helm_resource('postgresql',
-              'bitnami/postgresql',
-              flags=['--set', 'auth.postgresPassword=dev123',
-                     '--set', 'auth.database=videoconverter',
-                     '--set', 'primary.persistence.size=1Gi'],
-              resource_deps=[])
-
-helm_resource('mongodb',
-              'bitnami/mongodb',
-              flags=['--set', 'auth.rootPassword=dev123',
-                     '--set', 'auth.database=videoconverter',
-                     '--set', 'persistence.size=1Gi'],
-              resource_deps=[])
-
-helm_resource('redis',
-              'bitnami/redis',
-              flags=['--set', 'auth.password=dev123',
-                     '--set', 'master.persistence.size=1Gi'],
-              resource_deps=[])
-
-helm_resource('rabbitmq',
-              'bitnami/rabbitmq',
-              flags=['--set', 'auth.username=admin',
-                     '--set', 'auth.password=dev123',
-                     '--set', 'persistence.size=1Gi'],
-              resource_deps=[])
+k8s_yaml([
+    'infrastructure/k8s/databases/postgresql.yaml',
+    'infrastructure/k8s/databases/mongodb.yaml',
+    'infrastructure/k8s/databases/redis.yaml',
+    'infrastructure/k8s/databases/rabbitmq.yaml',
+    'infrastructure/k8s/storage/minio.yaml',
+])
 
 # Go services with live reload
 print("Setting up Go services...")

@@ -171,10 +171,8 @@ RABBITMQ_ROUTING_KEY=conversion.request
 RABBITMQ_PREFETCH_COUNT=1
 RABBITMQ_AUTO_ACK=false
 
-# MongoDB Configuration (for file storage)
+# MongoDB Configuration (for metadata storage)
 MONGODB_URI=mongodb://mongodb:27017/video_converter
-GRIDFS_BUCKET=videos
-GRIDFS_CHUNK_SIZE=261120          # 255KB chunks
 
 # Progress Reporting
 PROGRESS_UPDATE_INTERVAL=5s
@@ -666,8 +664,6 @@ type MongoDBConfig struct {
     MaxPoolSize    uint64        `env:"MONGODB_MAX_POOL_SIZE" envDefault:"100"`
     MinPoolSize    uint64        `env:"MONGODB_MIN_POOL_SIZE" envDefault:"5"`
     Timeout        time.Duration `env:"MONGODB_TIMEOUT" envDefault:"30s"`
-    GridFSBucket   string        `env:"GRIDFS_BUCKET" envDefault:"videos"`
-    GridFSChunkSize int32        `env:"GRIDFS_CHUNK_SIZE" envDefault:"261120"` // 255KB
 }
 
 func (c *MongoDBConfig) ClientOptions() *options.ClientOptions {

@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/rabbitmq/amqp091-go"
+	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
-	"github.com/go-redis/redis/v8"
 )
 
 type HealthChecker struct {

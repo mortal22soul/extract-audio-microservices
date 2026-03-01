@@ -1,6 +1,7 @@
 # Video Converter Microservices
 
-A modern, polyglot microservices architecture for video-to-MP3 conversion with real-time updates and ML-powered analytics.
+A modern, polyglot microservices architecture for video-to-MP3 conversion with real-time updates and
+ML-powered analytics.
 
 ## Architecture
 
@@ -60,6 +61,7 @@ docker-compose logs -f
 - **Analytics API**: http://localhost:8000
 - **Realtime WebSocket**: http://localhost:3001
 - **RabbitMQ Management**: http://localhost:15672 (admin/dev123)
+- **MinIO Console**: http://localhost:9001 (admin/dev123456)
 
 ## Development
 
@@ -126,21 +128,25 @@ make format
 ## Technology Stack
 
 ### Backend Services
+
 - **Go 1.21+** - High-performance backend services
 - **gRPC** - Inter-service communication
 - **PostgreSQL** - User data and authentication
-- **MongoDB GridFS** - File storage
+- **MongoDB** - Video metadata and conversion job documents
+- **MinIO** - S3-compatible object storage for video and MP3 files
 - **Redis** - Caching and pub/sub
 - **RabbitMQ** - Message queuing
 - **FFmpeg** - Video processing
 
 ### Frontend & Real-time
+
 - **Next.js 14** - React framework with App Router
 - **TypeScript** - Type-safe JavaScript
 - **Socket.IO** - WebSocket communication
 - **Tailwind CSS** - Utility-first CSS
 
 ### ML & Analytics
+
 - **Python 3.11+** - ML and data processing
 - **FastAPI** - High-performance Python API
 - **OpenCV** - Computer vision
@@ -148,6 +154,7 @@ make format
 - **Transformers** - NLP models
 
 ### Development Tools
+
 - **Tilt.dev** - Local development environment
 - **pnpm** - Fast Node.js package manager
 - **uv** - Fast Python package manager

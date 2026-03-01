@@ -19,7 +19,6 @@ platform across different environments.
 
 - **Docker**: Version 20.10+
 - **Kubernetes**: Version 1.25+
-- **Helm**: Version 3.10+
 - **kubectl**: Compatible with your Kubernetes version
 - **Tilt**: Version 0.30+ (for local development)
 
@@ -215,7 +214,6 @@ SMTP_PASSWORD=your-app-password
 ### Prerequisites
 
 - Kubernetes cluster (EKS, GKE, AKS, or self-managed)
-- Helm 3.10+
 - kubectl configured for your cluster
 - Container registry (ECR, GCR, ACR, or Docker Hub)
 
@@ -228,30 +226,14 @@ SMTP_PASSWORD=your-app-password
    kubectl config set-context --current --namespace=video-converter-staging
    ```
 
-2. **Install Dependencies**:
+2. **Deploy Infrastructure**:
 
    ```bash
-   # Add Helm repositories
-   helm repo add bitnami https://charts.bitnami.com/bitnami
-   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-   helm repo add grafana https://grafana.github.io/helm-charts
-   helm repo update
-
-   # Install databases
-   helm install postgresql bitnami/postgresql \
-     --set auth.postgresPassword=staging123 \
-     --set primary.persistence.size=20Gi
-
-   helm install mongodb bitnami/mongodb \
-     --set auth.rootPassword=staging123 \
-     --set persistence.size=20Gi
-
-   helm install redis bitnami/redis \
-     --set auth.password=staging123
-
-   helm install rabbitmq bitnami/rabbitmq \
-     --set auth.username=admin \
-     --set auth.password=staging123
+   # Apply database manifests
+   kubectl apply -f infrastructure/k8s/databases/postgresql.yaml
+   kubectl apply -f infrastructure/k8s/databases/mongodb.yaml
+   kubectl apply -f infrastructure/k8s/databases/redis.yaml
+   kubectl apply -f infrastructure/k8s/databases/rabbitmq.yaml
    ```
 
 3. **Build and Push Images**:
@@ -267,19 +249,13 @@ SMTP_PASSWORD=your-app-password
 4. **Deploy Application**:
 
    ```bash
-   # Install application using Helm
-   helm install video-converter ./infrastructure/helm/video-converter \
-     --values ./infrastructure/helm/video-converter/values-staging.yaml \
-     --set image.registry=$REGISTRY \
-     --set image.tag=staging
+   # Apply service manifests
+   kubectl apply -f infrastructure/k8s/services/
    ```
 
 5. **Configure Ingress**:
 
    ```bash
-   # Install ingress controller (if not already installed)
-   helm install ingress-nginx ingress-nginx/ingress-nginx
-
    # Apply ingress configuration
    kubectl apply -f infrastructure/k8s/ingress-staging.yaml
    ```
@@ -334,9 +310,9 @@ kubectl port-forward svc/gateway-service 8080:8080
 
 3. **Install Cluster Autoscaler**:
    ```bash
-   helm install cluster-autoscaler autoscaler/cluster-autoscaler \
-     --set autoDiscovery.clusterName=video-converter-prod \
-     --set awsRegion=us-west-2
+   # Follow the official cluster-autoscaler installation guide for your cloud provider:
+   # https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler
+   kubectl apply -f infrastructure/k8s/autoscaler/cluster-autoscaler.yaml
    ```
 
 #### Database Setup (Production)
@@ -425,16 +401,7 @@ For production, use managed database services:
 3. **Deploy Monitoring Stack**:
 
    ```bash
-   # Install Prometheus
-   helm install prometheus prometheus-community/kube-prometheus-stack \
-     --values infrastructure/helm/monitoring/prometheus-values.yaml
-
-   # Install Grafana
-   helm install grafana grafana/grafana \
-     --values infrastructure/helm/monitoring/grafana-values.yaml
-
-   # Install Jaeger
-   kubectl apply -f infrastructure/k8s/monitoring/jaeger.yaml
+   kubectl apply -f infrastructure/k8s/monitoring/
    ```
 
 4. **Deploy Application**:
@@ -444,11 +411,8 @@ For production, use managed database services:
    export REGISTRY=your-prod-registry.com/video-converter
    make build-push-all REGISTRY=$REGISTRY TAG=v1.0.0
 
-   # Deploy using Helm
-   helm install video-converter ./infrastructure/helm/video-converter \
-     --values ./infrastructure/helm/video-converter/values-prod.yaml \
-     --set image.registry=$REGISTRY \
-     --set image.tag=v1.0.0
+   # Apply service manifests
+   kubectl apply -f infrastructure/k8s/services/
    ```
 
 5. **Configure Load Balancer**:
@@ -506,62 +470,11 @@ spec:
 
 ## Configuration Management
 
-### Environment-Specific Values
+### Environment-Specific Configuration
 
-#### Development (values-dev.yaml)
-
-```yaml
-replicaCount: 1
-image:
-  pullPolicy: Always
-resources:
-  requests:
-    memory: '128Mi'
-    cpu: '100m'
-  limits:
-    memory: '512Mi'
-    cpu: '500m'
-autoscaling:
-  enabled: false
-```
-
-#### Staging (values-staging.yaml)
-
-```yaml
-replicaCount: 2
-image:
-  pullPolicy: Always
-resources:
-  requests:
-    memory: '256Mi'
-    cpu: '200m'
-  limits:
-    memory: '1Gi'
-    cpu: '1000m'
-autoscaling:
-  enabled: true
-  minReplicas: 2
-  maxReplicas: 5
-```
-
-#### Production (values-prod.yaml)
-
-```yaml
-replicaCount: 3
-image:
-  pullPolicy: IfNotPresent
-resources:
-  requests:
-    memory: '512Mi'
-    cpu: '500m'
-  limits:
-    memory: '2Gi'
-    cpu: '2000m'
-autoscaling:
-  enabled: true
-  minReplicas: 3
-  maxReplicas: 20
-```
+Environment-specific settings are managed via Kubernetes ConfigMaps and Secrets in
+`infrastructure/k8s/configmaps/` and `infrastructure/k8s/secrets/`. Update the values in those
+manifests for each environment before applying.
 
 ### ConfigMaps
 
@@ -812,8 +725,8 @@ spec:
 1. **Service Recovery**:
 
    ```bash
-   # Restore from backup
-   helm rollback video-converter <revision>
+   # Roll back to previous deployment
+   kubectl rollout undo deployment/video-converter
 
    # Scale up services
    kubectl scale deployment gateway-service --replicas=3

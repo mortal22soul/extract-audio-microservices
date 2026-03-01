@@ -207,7 +207,7 @@ kubectl patch deployment gateway-service -p '{"spec":{"template":{"spec":{"conta
 # Check upload size limits
 kubectl logs -l app=gateway-service | grep -i "upload\|size"
 
-# Verify MongoDB GridFS connection
+# Verify MongoDB connection
 kubectl exec -it <gateway-pod> -- mongo mongodb://mongodb:27017/video_converter
 
 # Check disk space on nodes
@@ -396,30 +396,6 @@ kubectl exec -it mongodb-0 -- mongo --eval "db.serverStatus().connections"
 
 # Check replica set status (if applicable)
 kubectl exec -it mongodb-0 -- mongo --eval "rs.status()"
-```
-
-#### GridFS Issues
-
-```bash
-# Check GridFS collections
-kubectl exec -it mongodb-0 -- mongo video_converter --eval "db.fs.files.count()"
-kubectl exec -it mongodb-0 -- mongo video_converter --eval "db.fs.chunks.count()"
-
-# Check for orphaned chunks
-kubectl exec -it mongodb-0 -- mongo video_converter --eval "
-var orphanedChunks = [];
-db.fs.chunks.find().forEach(function(chunk) {
-  if (!db.fs.files.findOne({_id: chunk.files_id})) {
-    orphanedChunks.push(chunk._id);
-  }
-});
-print('Orphaned chunks: ' + orphanedChunks.length);
-"
-
-# Clean up orphaned chunks
-kubectl exec -it mongodb-0 -- mongo video_converter --eval "
-db.fs.chunks.remove({files_id: {$nin: db.fs.files.distinct('_id')}});
-"
 ```
 
 ### Redis

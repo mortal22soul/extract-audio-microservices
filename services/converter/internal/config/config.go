@@ -7,44 +7,57 @@ import (
 
 type Config struct {
 	// RabbitMQ configuration
-	RabbitMQURL      string
-	ConversionQueue  string
+	RabbitMQURL          string
+	ConversionQueue      string
 	NotificationExchange string
-	
+
 	// MongoDB configuration
-	MongoURL    string
-	MongoDB     string
-	
+	MongoURL string
+	MongoDB  string
+
 	// Redis configuration
 	RedisURL string
-	
+
+	// MinIO configuration
+	MinIOEndpoint  string
+	MinIOAccessKey string
+	MinIOSecretKey string
+	MinIOBucket    string
+	MinIOUseSSL    bool
+
 	// Worker configuration
-	MaxWorkers     int
-	TempDir        string
-	
+	MaxWorkers int
+	TempDir    string
+
 	// FFmpeg configuration
-	FFmpegPath     string
-	AudioBitrate   string
+	FFmpegPath      string
+	AudioBitrate    string
 	AudioSampleRate string
 }
 
 func Load() *Config {
 	return &Config{
-		RabbitMQURL:         getEnv("RABBITMQ_URL", "amqp://admin:dev123@localhost:5672/"),
-		ConversionQueue:     getEnv("CONVERSION_QUEUE", "video.conversion"),
+		RabbitMQURL:          getEnv("RABBITMQ_URL", "amqp://admin:dev123@localhost:5672/"),
+		ConversionQueue:      getEnv("CONVERSION_QUEUE", "video.conversion"),
 		NotificationExchange: getEnv("NOTIFICATION_EXCHANGE", "notifications"),
-		
-		MongoURL:            getEnv("MONGO_URL", "mongodb://localhost:27017"),
-		MongoDB:             getEnv("MONGO_DB", "video_converter"),
-		
-		RedisURL:            getEnv("REDIS_URL", "redis://localhost:6379"),
-		
-		MaxWorkers:          getEnvInt("MAX_WORKERS", 5),
-		TempDir:             getEnv("TEMP_DIR", "/tmp/converter"),
-		
-		FFmpegPath:          getEnv("FFMPEG_PATH", "ffmpeg"),
-		AudioBitrate:        getEnv("AUDIO_BITRATE", "192k"),
-		AudioSampleRate:     getEnv("AUDIO_SAMPLE_RATE", "44100"),
+
+		MongoURL: getEnv("MONGO_URL", "mongodb://localhost:27017"),
+		MongoDB:  getEnv("MONGO_DB", "video_converter"),
+
+		RedisURL: getEnv("REDIS_URL", "redis://localhost:6379"),
+
+		MinIOEndpoint:  getEnv("MINIO_ENDPOINT", "localhost:9000"),
+		MinIOAccessKey: getEnv("MINIO_ACCESS_KEY", "admin"),
+		MinIOSecretKey: getEnv("MINIO_SECRET_KEY", "dev123456"),
+		MinIOBucket:    getEnv("MINIO_BUCKET", "videos"),
+		MinIOUseSSL:    getEnv("MINIO_USE_SSL", "false") == "true",
+
+		MaxWorkers: getEnvInt("MAX_WORKERS", 5),
+		TempDir:    getEnv("TEMP_DIR", "/tmp/converter"),
+
+		FFmpegPath:      getEnv("FFMPEG_PATH", "ffmpeg"),
+		AudioBitrate:    getEnv("AUDIO_BITRATE", "192k"),
+		AudioSampleRate: getEnv("AUDIO_SAMPLE_RATE", "44100"),
 	}
 }
 

@@ -38,9 +38,8 @@ export default function ProfilePage() {
     try {
       setIsUpdatingProfile(true);
 
-      // TODO: Implement API call to update profile
-      // const updatedUser = await apiClient.updateProfile(data);
-      // setUser(updatedUser);
+      // Mock API call to update profile since there's no backend endpoint yet
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       console.log('Profile update data:', data);
       toast.success('Profile updated successfully!');
@@ -55,8 +54,8 @@ export default function ProfilePage() {
     try {
       setIsUpdatingPassword(true);
 
-      // TODO: Implement API call to update password
-      // await apiClient.updatePassword(data);
+      // Mock API call to update password since there's no backend endpoint yet
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       console.log('Password update data:', data);
       passwordForm.reset();

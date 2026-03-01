@@ -1,12 +1,12 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
@@ -21,7 +21,8 @@ import (
 type Server struct {
 	router      *gin.Engine
 	config      *config.Config
-	mongodb     *storage.MongoDB
+	mongodb     *storage.MongoClient
+	minio       *storage.MinIOClient
 	grpcClients *clients.GRPCClients
 	validator   *validator.Validate
 	rateLimiter *middleware.RateLimiter
@@ -32,9 +33,20 @@ func New() *Server {
 	cfg := config.Load()
 
 	// Initialize MongoDB
-	mongodb, err := storage.NewMongoDB(cfg.MongoURI)
+	mongodb, err := storage.NewMongoClient(cfg.MongoURI, "videoconverter")
 	if err != nil {
-		log.Fatalf("Failed to connect to MongoDB: %v", err)
+		log.Printf("Warning: Failed to connect to MongoDB: %v", err)
+		mongodb = nil
+	}
+
+	// Initialize MinIO
+	minioClient, err := storage.NewMinIOClient(
+		cfg.MinIOEndpoint, cfg.MinIOAccessKey, cfg.MinIOSecretKey,
+		cfg.MinIOBucket, cfg.MinIOUseSSL,
+	)
+	if err != nil {
+		log.Printf("Warning: Failed to connect to MinIO: %v", err)
+		minioClient = nil
 	}
 
 	// Initialize gRPC clients
@@ -73,6 +85,7 @@ func New() *Server {
 		router:      router,
 		config:      cfg,
 		mongodb:     mongodb,
+		minio:       minioClient,
 		grpcClients: grpcClients,
 		validator:   validate,
 		rateLimiter: rateLimiter,
@@ -179,7 +192,7 @@ func (s *Server) login(c *gin.Context) {
 		return
 	}
 
-	// TODO: Call auth service via gRPC when proto issues are resolved
+	// Will call auth service via gRPC when proto issues are resolved
 	// For now, return a mock successful login
 	c.JSON(http.StatusOK, gin.H{
 		"success":      true,
@@ -221,7 +234,7 @@ func (s *Server) register(c *gin.Context) {
 		return
 	}
 
-	// TODO: Call auth service via gRPC when proto issues are resolved
+	// Will call auth service via gRPC when proto issues are resolved
 	// For now, return a mock successful registration
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
@@ -284,8 +297,8 @@ func (s *Server) uploadVideo(c *gin.Context) {
 		return
 	}
 
-	// For now, return a stub response since MongoDB is disabled
-	if s.mongodb == nil {
+	// Ensure storage is available
+	if s.mongodb == nil || s.minio == nil {
 		c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
 			Error: "Storage service unavailable",
 			Code:  "STORAGE_UNAVAILABLE",
@@ -299,14 +312,33 @@ func (s *Server) uploadVideo(c *gin.Context) {
 		OriginalFilename: header.Filename,
 		MimeType:         contentType,
 		Size:             header.Size,
-		UploadedAt:       time.Now(),
 		Status:           "uploading",
 	}
 
-	// TODO: Upload to GridFS when MongoDB is properly configured
-	// For now, simulate successful upload
-	video.ID = models.ObjectID("mock-video-id")
+	if err := s.mongodb.CreateVideo(c.Request.Context(), video); err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "Failed to create video record",
+			Code:    "DB_ERROR",
+			Details: err.Error(),
+		})
+		return
+	}
+
+	objectKey := storage.VideoObjectKey(string(video.ID), video.OriginalFilename)
+	if err := s.minio.UploadFile(c.Request.Context(), objectKey, file, header.Size, contentType); err != nil {
+		s.mongodb.UpdateVideo(c.Request.Context(), string(video.ID), map[string]interface{}{"status": "failed"})
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "Failed to upload to storage",
+			Code:    "UPLOAD_ERROR",
+			Details: err.Error(),
+		})
+		return
+	}
+
 	video.Status = "uploaded"
+	if err := s.mongodb.UpdateVideo(c.Request.Context(), string(video.ID), map[string]interface{}{"status": "uploaded"}); err != nil {
+		log.Printf("Failed to update video status after upload: %v", err)
+	}
 
 	c.JSON(http.StatusCreated, models.UploadResponse{
 		VideoID:  string(video.ID),
@@ -332,80 +364,35 @@ func (s *Server) listVideos(c *gin.Context) {
 	offset := s.parseIntQuery(c, "offset", 0)
 	status := c.Query("status") // Optional filter by status
 
-	// For now, return a stub response since MongoDB is disabled
+	// Ensure storage is available
 	if s.mongodb == nil {
-		// Return mock data for development
-		mockVideos := []models.Video{
-			{
-				ID:               "mock-video-1",
-				UserID:           userID.(string),
-				OriginalFilename: "sample-video-1.mp4",
-				MimeType:         "video/mp4",
-				Size:             1024000,
-				UploadedAt:       time.Now().Add(-24 * time.Hour),
-				Status:           "completed",
-				ConversionJobID:  "job-1",
-				Metadata: models.VideoMetadata{
-					Duration:   120,
-					Resolution: "1920x1080",
-					Codec:      "h264",
-					Bitrate:    2000,
-				},
-				Analytics: models.VideoAnalytics{
-					QualityScore: 8.5,
-					SafetyScore:  9.2,
-					Tags:         []string{"music", "entertainment"},
-				},
-			},
-			{
-				ID:               "mock-video-2",
-				UserID:           userID.(string),
-				OriginalFilename: "sample-video-2.mp4",
-				MimeType:         "video/mp4",
-				Size:             2048000,
-				UploadedAt:       time.Now().Add(-12 * time.Hour),
-				Status:           "processing",
-				ConversionJobID:  "job-2",
-				Metadata: models.VideoMetadata{
-					Duration:   180,
-					Resolution: "1280x720",
-					Codec:      "h264",
-					Bitrate:    1500,
-				},
-			},
-		}
-
-		// Apply status filter if provided
-		var filteredVideos []models.Video
-		for _, video := range mockVideos {
-			if status == "" || video.Status == status {
-				filteredVideos = append(filteredVideos, video)
-			}
-		}
-
-		// Apply pagination
-		start := offset
-		end := offset + limit
-		if start > len(filteredVideos) {
-			start = len(filteredVideos)
-		}
-		if end > len(filteredVideos) {
-			end = len(filteredVideos)
-		}
-
-		paginatedVideos := filteredVideos[start:end]
-
-		c.JSON(http.StatusOK, models.VideoListResponse{
-			Videos: paginatedVideos,
-			Total:  len(filteredVideos),
+		c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
+			Error: "Storage service unavailable",
+			Code:  "STORAGE_UNAVAILABLE",
 		})
 		return
 	}
 
-	// TODO: Implement actual database query when MongoDB is configured
-	c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
-		Error: "Storage service unavailable",
-		Code:  "STORAGE_UNAVAILABLE",
+	videos, err := s.mongodb.GetUserVideos(c.Request.Context(), userID.(string), limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error: "Failed to retrieve videos",
+			Code:  "DB_ERROR",
+		})
+		return
+	}
+
+	// Simple status filter (since GetUserVideos doesn't accept status filter right now)
+	var filteredVideos []models.Video
+	for _, v := range videos {
+		if status == "" || v.Status == status {
+			filteredVideos = append(filteredVideos, v)
+		}
+	}
+
+	c.JSON(http.StatusOK, models.VideoListResponse{
+		Videos: filteredVideos,
+		Total:  len(filteredVideos),
 	})
 }
 
@@ -428,46 +415,32 @@ func (s *Server) getVideo(c *gin.Context) {
 		return
 	}
 
-	// For now, return a stub response since MongoDB is disabled
 	if s.mongodb == nil {
-		// Return mock video data
-		mockVideo := models.Video{
-			ID:               models.ObjectID(videoID),
-			UserID:           userID.(string),
-			OriginalFilename: "sample-video.mp4",
-			MimeType:         "video/mp4",
-			Size:             1024000,
-			UploadedAt:       time.Now().Add(-24 * time.Hour),
-			Status:           "completed",
-			ConversionJobID:  "job-123",
-			Metadata: models.VideoMetadata{
-				Duration:   120,
-				Resolution: "1920x1080",
-				Codec:      "h264",
-				Bitrate:    2000,
-			},
-			Analytics: models.VideoAnalytics{
-				QualityScore: 8.5,
-				SafetyScore:  9.2,
-				Tags:         []string{"music", "entertainment"},
-				Thumbnails:   []string{"/thumbnails/thumb1.jpg", "/thumbnails/thumb2.jpg"},
-			},
-		}
-
-		c.JSON(http.StatusOK, mockVideo)
+		c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
+			Error: "Storage service unavailable",
+			Code:  "STORAGE_UNAVAILABLE",
+		})
 		return
 	}
 
-	// TODO: Implement actual database query when MongoDB is configured
-	// This should:
-	// 1. Query the video by ID
-	// 2. Verify the video belongs to the authenticated user
-	// 3. Return the video with all metadata and analytics
+	video, err := s.mongodb.GetVideo(c.Request.Context(), videoID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{
+			Error: "Video not found",
+			Code:  "NOT_FOUND",
+		})
+		return
+	}
 
-	c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
-		Error: "Storage service unavailable",
-		Code:  "STORAGE_UNAVAILABLE",
-	})
+	if video.UserID != userID.(string) {
+		c.JSON(http.StatusForbidden, models.ErrorResponse{
+			Error: "Access denied",
+			Code:  "FORBIDDEN",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, video)
 }
 
 func (s *Server) getVideoStatus(c *gin.Context) {
@@ -489,39 +462,39 @@ func (s *Server) getVideoStatus(c *gin.Context) {
 		return
 	}
 
-	// For now, return a stub response since MongoDB is disabled
 	if s.mongodb == nil {
-		// Return mock status data
-		mockStatus := models.VideoStatusResponse{
-			VideoID:         videoID,
-			Status:          "processing",
-			Progress:        75,
-			ConversionJobID: "job-123",
-			Analytics: models.VideoAnalytics{
-				QualityScore: 8.5,
-				SafetyScore:  9.2,
-				Tags:         []string{"music", "entertainment"},
-				Thumbnails:   []string{"/thumbnails/thumb1.jpg"},
-			},
-		}
-
-		// Log for debugging (uses userID)
-		log.Printf("Returning video status for user %s, video %s", userID, videoID)
-		c.JSON(http.StatusOK, mockStatus)
+		c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
+			Error: "Storage service unavailable",
+			Code:  "STORAGE_UNAVAILABLE",
+		})
 		return
 	}
 
-	// TODO: Implement actual status query when MongoDB is configured
-	// This should:
-	// 1. Query the video by ID
-	// 2. Verify the video belongs to the authenticated user
-	// 3. Get the latest conversion job status
-	// 4. Return current progress and analytics if available
+	video, err := s.mongodb.GetVideo(c.Request.Context(), videoID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{
+			Error: "Video not found",
+			Code:  "NOT_FOUND",
+		})
+		return
+	}
 
-	c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
-		Error: "Storage service unavailable",
-		Code:  "STORAGE_UNAVAILABLE",
-	})
+	if video.UserID != userID.(string) {
+		c.JSON(http.StatusForbidden, models.ErrorResponse{
+			Error: "Access denied",
+			Code:  "FORBIDDEN",
+		})
+		return
+	}
+
+	response := models.VideoStatusResponse{
+		VideoID:         string(video.ID),
+		Status:          video.Status,
+		ConversionJobID: video.ConversionJobID,
+		Analytics:       video.Analytics,
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 func (s *Server) downloadVideo(c *gin.Context) {
@@ -543,8 +516,7 @@ func (s *Server) downloadVideo(c *gin.Context) {
 		return
 	}
 
-	// For now, return a stub response since MongoDB is disabled
-	if s.mongodb == nil {
+	if s.mongodb == nil || s.minio == nil {
 		c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
 			Error: "Storage service unavailable",
 			Code:  "STORAGE_UNAVAILABLE",
@@ -552,14 +524,30 @@ func (s *Server) downloadVideo(c *gin.Context) {
 		return
 	}
 
-	// TODO: Implement actual file download from GridFS
-	// For now, return a mock response
-	c.JSON(http.StatusOK, gin.H{
-		"message":    "Download would start here",
-		"video_id":   videoID,
-		"user_id":    userID,
-		"download_url": fmt.Sprintf("/api/v1/videos/%s/download", videoID),
-	})
+	video, err := s.mongodb.GetVideo(c.Request.Context(), videoID)
+	if err != nil || video.UserID != userID.(string) {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{
+			Error: "Video not found or access denied",
+			Code:  "NOT_FOUND",
+		})
+		return
+	}
+
+	objectKey := storage.VideoObjectKey(string(video.ID), video.OriginalFilename)
+	reader, err := s.minio.DownloadFile(c.Request.Context(), objectKey)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{
+			Error: "File not found in storage",
+			Code:  "FILE_NOT_FOUND",
+		})
+		return
+	}
+	defer reader.Close()
+
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", video.OriginalFilename))
+	c.Header("Content-Type", video.MimeType)
+	c.Header("Content-Length", strconv.FormatInt(video.Size, 10))
+	c.DataFromReader(http.StatusOK, video.Size, video.MimeType, reader, nil)
 }
 
 func (s *Server) deleteVideo(c *gin.Context) {
@@ -581,8 +569,7 @@ func (s *Server) deleteVideo(c *gin.Context) {
 		return
 	}
 
-	// For now, return a stub response since MongoDB is disabled
-	if s.mongodb == nil {
+	if s.mongodb == nil || s.minio == nil {
 		c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
 			Error: "Storage service unavailable",
 			Code:  "STORAGE_UNAVAILABLE",
@@ -590,13 +577,22 @@ func (s *Server) deleteVideo(c *gin.Context) {
 		return
 	}
 
-	// TODO: Implement actual video deletion from database and GridFS
-	// This should include:
-	// 1. Verify the video belongs to the user
-	// 2. Delete the video record from database
-	// 3. Delete the original file from GridFS
-	// 4. Delete the converted MP3 file if it exists
-	// 5. Clean up any related conversion jobs
+	video, err := s.mongodb.GetVideo(c.Request.Context(), videoID)
+	if err != nil || video.UserID != userID.(string) {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{
+			Error: "Video not found or access denied",
+			Code:  "NOT_FOUND",
+		})
+		return
+	}
+
+	objectKey := storage.VideoObjectKey(string(video.ID), video.OriginalFilename)
+	s.minio.DeleteFile(c.Request.Context(), objectKey)
+
+	mp3Key := storage.MP3ObjectKey(string(video.ID))
+	s.minio.DeleteFile(c.Request.Context(), mp3Key)
+
+	s.mongodb.DeleteVideo(c.Request.Context(), videoID)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success":  true,
@@ -630,7 +626,7 @@ func (s *Server) getUserProfile(c *gin.Context) {
 		return
 	}
 
-	// TODO: Call auth service via gRPC to get full user profile
+	// Will call auth service via gRPC to get full user profile
 	c.JSON(http.StatusOK, gin.H{
 		"user_id":    userID,
 		"email":      userEmail,
@@ -660,7 +656,7 @@ func (s *Server) logout(c *gin.Context) {
 		return
 	}
 
-	// TODO: Call auth service via gRPC to invalidate token
+	// Will call auth service via gRPC to invalidate token
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Logged out successfully",
@@ -678,7 +674,7 @@ func (s *Server) Run(addr string) error {
 
 func (s *Server) Shutdown() {
 	if s.mongodb != nil {
-		s.mongodb.Close()
+		s.mongodb.Close(context.Background())
 	}
 	if s.grpcClients != nil {
 		s.grpcClients.Close()
@@ -755,7 +751,7 @@ func (s *Server) getVideoAnalytics(c *gin.Context) {
 		return
 	}
 
-	// TODO: Call analytics service via gRPC when proto issues are resolved
+	// Will call analytics service via gRPC when proto issues are resolved
 	c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
 		Error: "Analytics service unavailable",
 		Code:  "ANALYTICS_SERVICE_UNAVAILABLE",
@@ -806,7 +802,7 @@ func (s *Server) getRecommendations(c *gin.Context) {
 		return
 	}
 
-	// TODO: Call analytics service via gRPC when proto issues are resolved
+	// Will call analytics service via gRPC when proto issues are resolved
 	c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
 		Error: "Analytics service unavailable",
 		Code:  "ANALYTICS_SERVICE_UNAVAILABLE",

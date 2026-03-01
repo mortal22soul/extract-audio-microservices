@@ -9,11 +9,11 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: dev123
     ports:
-      - "5432:5432"
+      - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -25,7 +25,7 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: dev123
       MONGO_INITDB_DATABASE: videoconverter
     ports:
-      - "27017:27017"
+      - '27017:27017'
     volumes:
       - mongodb_data:/data/db
     healthcheck:
@@ -38,11 +38,11 @@ services:
     image: redis:7-alpine
     command: redis-server --requirepass dev123
     ports:
-      - "6379:6379"
+      - '6379:6379'
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "dev123", "ping"]
+      test: ['CMD', 'redis-cli', '-a', 'dev123', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -53,8 +53,8 @@ services:
       RABBITMQ_DEFAULT_USER: admin
       RABBITMQ_DEFAULT_PASS: dev123
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - '5672:5672'
+      - '15672:15672'
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
@@ -62,6 +62,23 @@ services:
       interval: 30s
       timeout: 30s
       retries: 3
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: dev123456
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Application Services
   auth-service:
@@ -73,7 +90,7 @@ services:
       DATABASE_URL: postgres://postgres:dev123@postgresql:5432/videoconverter?sslmode=disable
       JWT_SECRET: dev-jwt-secret-change-in-production
     ports:
-      - "50051:50051"
+      - '50051:50051'
     depends_on:
       postgresql:
         condition: service_healthy
@@ -91,12 +108,19 @@ services:
       REDIS_URL: redis://:dev123@redis:6379
       AUTH_SERVICE_URL: auth-service:50051
       ANALYTICS_SERVICE_URL: analytics-service:8000
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: admin
+      MINIO_SECRET_KEY: dev123456
+      MINIO_BUCKET: videos
+      MINIO_USE_SSL: 'false'
     ports:
-      - "8080:8080"
+      - '8080:8080'
     depends_on:
       mongodb:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
       auth-service:
         condition: service_started
@@ -113,12 +137,19 @@ services:
       RABBITMQ_URL: amqp://admin:dev123@rabbitmq:5672/
       REDIS_URL: redis://:dev123@redis:6379
       WORKER_POOL_SIZE: 5
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: admin
+      MINIO_SECRET_KEY: dev123456
+      MINIO_BUCKET: videos
+      MINIO_USE_SSL: 'false'
     depends_on:
       mongodb:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     volumes:
       - ./services/converter:/app
@@ -151,7 +182,7 @@ services:
       RABBITMQ_URL: amqp://admin:dev123@rabbitmq:5672/
       REDIS_URL: redis://:dev123@redis:6379
     ports:
-      - "8000:8000"
+      - '8000:8000'
     depends_on:
       mongodb:
         condition: service_healthy
@@ -172,7 +203,7 @@ services:
       REDIS_URL: redis://:dev123@redis:6379
       JWT_SECRET: dev-jwt-secret-change-in-production
     ports:
-      - "3001:3001"
+      - '3001:3001'
     depends_on:
       redis:
         condition: service_healthy
@@ -188,7 +219,7 @@ services:
       NEXT_PUBLIC_API_URL: http://localhost:8080
       NEXT_PUBLIC_REALTIME_URL: http://localhost:3001
     ports:
-      - "3000:3000"
+      - '3000:3000'
     depends_on:
       - gateway-service
       - realtime-service
@@ -203,3 +234,4 @@ volumes:
   mongodb_data:
   redis_data:
   rabbitmq_data:
+  minio_data:

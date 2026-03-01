@@ -6,6 +6,7 @@ toolchain go1.24.2
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.0.0
+	github.com/sirupsen/logrus v1.9.3
 	github.com/video-converter/shared v0.0.0
 	golang.org/x/crypto v0.28.0
 	google.golang.org/grpc v1.69.4

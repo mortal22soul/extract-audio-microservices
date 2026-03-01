@@ -18,7 +18,6 @@ This guide covers the development setup and workflow for the Video Converter mic
 
 - **kubectl** - Kubernetes CLI
 - **Tilt** - Local Kubernetes development
-- **Helm** - Kubernetes package manager
 
 ### Development Tools
 
@@ -243,7 +242,8 @@ Generate code from .proto files:
 make proto
 ```
 
-Proto files are located in `shared/proto/` and generated code goes to each service's appropriate directory.
+Proto files are located in `shared/proto/` and generated code goes to each service's appropriate
+directory.
 
 ## Environment Variables
 
@@ -303,8 +303,7 @@ docker-compose exec redis redis-cli -a dev123
 
 ### Message Queue
 
-**RabbitMQ Management UI:**
-http://localhost:15672 (admin/dev123)
+**RabbitMQ Management UI:** http://localhost:15672 (admin/dev123)
 
 ## Performance Profiling
 
@@ -344,8 +343,7 @@ If ports are already in use, update the port mappings in:
 sudo chown -R $USER:$USER .
 ```
 
-**Windows:**
-Run terminal as Administrator if needed.
+**Windows:** Run terminal as Administrator if needed.
 
 ### Database Connection Issues
 

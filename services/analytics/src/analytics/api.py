@@ -18,8 +18,7 @@ router = APIRouter(prefix="/api/v1", tags=["analytics"])
 analytics_service = AnalyticsService()
 
 
-# Pydantic models for API
-class RecommendationResponse(BaseModel):
+class PopularVideoResponse(BaseModel):
     video_id: str
     score: float
     title: str = ""
@@ -29,31 +28,6 @@ class RecommendationResponse(BaseModel):
     duration: int = 0
     user_id: str = ""
     created_at: Optional[str] = None
-
-
-class SimilarVideoResponse(BaseModel):
-    video_id: str
-    similarity_score: float
-    title: str = ""
-    tags: List[str] = []
-    quality_score: float = 0.0
-    thumbnails: List[str] = []
-    duration: int = 0
-    user_id: str = ""
-    created_at: Optional[str] = None
-
-
-class UserInteractionRequest(BaseModel):
-    video_id: str = Field(..., description="Video ID that user interacted with")
-    interaction_type: str = Field(..., description="Type of interaction: view, download, like, share")
-
-
-class UserPreferencesResponse(BaseModel):
-    user_id: str
-    preferred_tags: Dict[str, int] = {}
-    quality_preference: float = 0.5
-    interaction_count: int = 0
-    updated_at: Optional[str] = None
 
 
 class VideoAnalysisResponse(BaseModel):
@@ -68,169 +42,7 @@ class VideoAnalysisResponse(BaseModel):
     created_at: Optional[str] = None
 
 
-# Recommendation endpoints
-@router.get(
-    "/recommendations/user/{user_id}",
-    response_model=List[RecommendationResponse],
-    summary="Get personalized recommendations for a user"
-)
-async def get_user_recommendations(
-    user_id: str = Path(..., description="User ID to get recommendations for"),
-    limit: int = Query(10, ge=1, le=50, description="Number of recommendations to return"),
-    use_cache: bool = Query(True, description="Whether to use cached recommendations")
-):
-    """
-    Get personalized video recommendations for a user using hybrid filtering.
-    
-    Combines content-based filtering (based on video features and user preferences)
-    with collaborative filtering (based on similar users' behavior).
-    """
-    try:
-        from .recommendation_engine import recommendation_engine
-        
-        if recommendation_engine is None:
-            raise HTTPException(status_code=503, detail="Recommendation engine not initialized")
-        
-        recommendations = await recommendation_engine.get_recommendations(
-            user_id=user_id,
-            n_recommendations=limit,
-            use_cache=use_cache
-        )
-        
-        return [RecommendationResponse(**rec) for rec in recommendations]
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get user recommendations: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get recommendations")
 
-
-@router.get(
-    "/recommendations/video/{video_id}/similar",
-    response_model=List[SimilarVideoResponse],
-    summary="Get videos similar to a specific video"
-)
-async def get_similar_videos(
-    video_id: str = Path(..., description="Video ID to find similar videos for"),
-    limit: int = Query(10, ge=1, le=50, description="Number of similar videos to return"),
-    use_cache: bool = Query(True, description="Whether to use cached recommendations")
-):
-    """
-    Get videos similar to a specific video using content-based filtering.
-    
-    Uses video features like tags, quality metrics, duration, and metadata
-    to find similar content.
-    """
-    try:
-        from .recommendation_engine import recommendation_engine
-        
-        if recommendation_engine is None:
-            raise HTTPException(status_code=503, detail="Recommendation engine not initialized")
-        
-        similar_videos = await recommendation_engine.get_similar_videos(
-            video_id=video_id,
-            n_recommendations=limit,
-            use_cache=use_cache
-        )
-        
-        return [SimilarVideoResponse(**video) for video in similar_videos]
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get similar videos: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get similar videos")
-
-
-@router.post(
-    "/recommendations/user/{user_id}/interaction",
-    summary="Track user interaction with a video"
-)
-async def track_user_interaction(
-    interaction: UserInteractionRequest,
-    user_id: str = Path(..., description="User ID")
-):
-    """
-    Track user interaction with a video to improve future recommendations.
-    
-    Supported interaction types:
-    - view: User viewed the video
-    - download: User downloaded the converted MP3
-    - like: User liked the video
-    - share: User shared the video
-    """
-    try:
-        from .recommendation_engine import recommendation_engine
-        
-        if recommendation_engine is None:
-            raise HTTPException(status_code=503, detail="Recommendation engine not initialized")
-        
-        await recommendation_engine.update_user_interaction(
-            user_id=user_id,
-            video_id=interaction.video_id,
-            interaction_type=interaction.interaction_type
-        )
-        
-        return {"message": "Interaction tracked successfully"}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to track user interaction: {e}")
-        raise HTTPException(status_code=500, detail="Failed to track interaction")
-
-
-@router.get(
-    "/recommendations/retrain",
-    summary="Retrain recommendation models"
-)
-async def retrain_models():
-    """
-    Manually trigger retraining of recommendation models.
-    
-    This endpoint forces retraining of both content-based and collaborative
-    filtering models with the latest data.
-    """
-    try:
-        from .recommendation_engine import recommendation_engine
-        
-        if recommendation_engine is None:
-            raise HTTPException(status_code=503, detail="Recommendation engine not initialized")
-        
-        await recommendation_engine.train_models(force_retrain=True)
-        return {"message": "Models retrained successfully"}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to retrain models: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrain models")
-
-
-# User preferences endpoints
-@router.get(
-    "/users/{user_id}/preferences",
-    response_model=UserPreferencesResponse,
-    summary="Get user preferences"
-)
-async def get_user_preferences(
-    user_id: str = Path(..., description="User ID")
-):
-    """Get user preferences and interaction history."""
-    try:
-        preferences = await analytics_service.user_preferences.get_preferences(user_id)
-        
-        if not preferences:
-            raise HTTPException(status_code=404, detail="User preferences not found")
-        
-        return UserPreferencesResponse(**preferences)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get user preferences: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get user preferences")
 
 
 # Video analysis endpoints
@@ -281,7 +93,7 @@ async def get_user_videos(
 # Popular content endpoints
 @router.get(
     "/videos/popular",
-    response_model=List[RecommendationResponse],
+    response_model=List[PopularVideoResponse],
     summary="Get popular videos"
 )
 async def get_popular_videos(
@@ -313,7 +125,7 @@ async def get_popular_videos(
                 "created_at": str(video.get("created_at", ""))
             })
         
-        return [RecommendationResponse(**video) for video in popular_videos]
+        return [PopularVideoResponse(**video) for video in popular_videos]
         
     except Exception as e:
         logger.error(f"Failed to get popular videos: {e}")
@@ -364,43 +176,3 @@ async def search_videos(
         raise HTTPException(status_code=500, detail="Failed to search videos")
 
 
-# Health check for recommendation system
-@router.get(
-    "/recommendations/health",
-    summary="Check recommendation system health"
-)
-async def recommendation_health():
-    """Check the health of the recommendation system."""
-    try:
-        from .recommendation_engine import recommendation_engine
-        
-        if recommendation_engine is None:
-            return {
-                "status": "not_initialized",
-                "message": "Recommendation engine not initialized"
-            }
-        
-        health_status = {
-            "status": "healthy",
-            "content_recommender_trained": recommendation_engine.content_recommender.is_trained,
-            "collaborative_recommender_trained": recommendation_engine.collaborative_recommender.is_trained,
-            "cache_connected": recommendation_engine.cache.redis_client is not None,
-            "last_training_time": str(recommendation_engine.last_training_time) if recommendation_engine.last_training_time else None,
-            "models_status": {
-                "content_based": {
-                    "feature_matrix_size": recommendation_engine.content_recommender.feature_matrix.shape if recommendation_engine.content_recommender.feature_matrix is not None else None,
-                    "video_count": len(recommendation_engine.content_recommender.video_ids)
-                },
-                "collaborative": {
-                    "user_count": len(recommendation_engine.collaborative_recommender.user_ids),
-                    "video_count": len(recommendation_engine.collaborative_recommender.video_ids),
-                    "matrix_shape": recommendation_engine.collaborative_recommender.user_item_matrix.shape if recommendation_engine.collaborative_recommender.user_item_matrix is not None else None
-                }
-            }
-        }
-        
-        return health_status
-        
-    except Exception as e:
-        logger.error(f"Failed to get recommendation health: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get recommendation health")

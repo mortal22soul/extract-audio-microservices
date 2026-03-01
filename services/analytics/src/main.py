@@ -11,9 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from analytics.config import config
 from analytics.database import mongodb
 from analytics.messaging import consumer, publisher
-from analytics.models import content_safety_model, video_quality_model, recommendation_model
+from analytics.models import video_quality_model
 from analytics.services import AnalyticsService
-from analytics.recommendation_engine import recommendation_engine
 from analytics.api import router
 
 # Configure logging
@@ -37,15 +36,7 @@ async def lifespan(app: FastAPI):
         await publisher.connect()
         
         # Load ML models
-        await content_safety_model.load_model()
         await video_quality_model.load_model()
-        await recommendation_model.load_model()
-        
-        # Initialize recommendation engine
-        from analytics.recommendation_engine import HybridRecommendationEngine
-        import analytics.recommendation_engine as rec_module
-        rec_module.recommendation_engine = HybridRecommendationEngine()
-        await rec_module.recommendation_engine.initialize()
         
         # Initialize analytics service
         analytics_service = AnalyticsService()
@@ -78,9 +69,7 @@ async def lifespan(app: FastAPI):
         await mongodb.disconnect()
         
         # Cleanup ML models
-        content_safety_model.cleanup()
         video_quality_model.cleanup()
-        recommendation_model.cleanup()
         
         logger.info("Analytics Service shut down successfully")
         
@@ -113,15 +102,7 @@ async def health_check():
         "status": "healthy",
         "service": "analytics",
         "models_loaded": {
-            "content_safety": content_safety_model.is_loaded,
-            "video_quality": video_quality_model.is_loaded,
-            "recommendation": recommendation_model.is_loaded
-        },
-        "recommendation_engine": {
-            "initialized": recommendation_engine is not None,
-            "content_trained": recommendation_engine.content_recommender.is_trained if recommendation_engine else False,
-            "collaborative_trained": recommendation_engine.collaborative_recommender.is_trained if recommendation_engine else False,
-            "cache_connected": recommendation_engine.cache.redis_client is not None if recommendation_engine else False
+            "video_quality": video_quality_model.is_loaded
         },
         "connections": {
             "mongodb": mongodb.client is not None,

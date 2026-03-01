@@ -22,9 +22,10 @@ type Worker struct {
 	workerPool  chan struct{}
 	stopCh      chan struct{}
 	wg          sync.WaitGroup
-	
+
 	// Clients
 	mongoClient   *storage.MongoClient
+	minioClient   *storage.MinIOClient
 	redisClient   *storage.RedisClient
 	rabbitClient  *messaging.RabbitMQClient
 	ffmpeg        *ffmpeg.FFmpeg
@@ -81,19 +82,35 @@ func New(cfg *config.Config) (*Worker, error) {
 		return nil, fmt.Errorf("failed to create file manager: %w", err)
 	}
 
+	// Initialize MinIO client
+	minioClient, err := storage.NewMinIOClient(
+		cfg.MinIOEndpoint,
+		cfg.MinIOAccessKey,
+		cfg.MinIOSecretKey,
+		cfg.MinIOBucket,
+		cfg.MinIOUseSSL,
+	)
+	if err != nil {
+		mongoClient.Close(context.Background())
+		redisClient.Close()
+		rabbitClient.Close()
+		return nil, fmt.Errorf("failed to create MinIO client: %w", err)
+	}
+
 	// Initialize pipeline
-	pipelineClient := pipeline.New(mongoClient, redisClient, ffmpegClient, fileManager)
+	pipelineClient := pipeline.New(mongoClient, minioClient, redisClient, ffmpegClient, fileManager)
 
 	return &Worker{
-		config:      cfg,
-		workerPool:  make(chan struct{}, cfg.MaxWorkers),
-		stopCh:      make(chan struct{}),
-		mongoClient: mongoClient,
-		redisClient: redisClient,
+		config:       cfg,
+		workerPool:   make(chan struct{}, cfg.MaxWorkers),
+		stopCh:       make(chan struct{}),
+		mongoClient:  mongoClient,
+		minioClient:  minioClient,
+		redisClient:  redisClient,
 		rabbitClient: rabbitClient,
-		ffmpeg:      ffmpegClient,
-		fileManager: fileManager,
-		pipeline:    pipelineClient,
+		ffmpeg:       ffmpegClient,
+		fileManager:  fileManager,
+		pipeline:     pipelineClient,
 	}, nil
 }
 
@@ -118,8 +135,7 @@ func (w *Worker) Stop() {
 	log.Println("Stopping converter worker...")
 	close(w.stopCh)
 	w.wg.Wait()
-	
-	// Close all clients
+
 	if w.mongoClient != nil {
 		w.mongoClient.Close(context.Background())
 	}
@@ -129,7 +145,7 @@ func (w *Worker) Stop() {
 	if w.rabbitClient != nil {
 		w.rabbitClient.Close()
 	}
-	
+
 	log.Println("Converter worker stopped")
 }
 

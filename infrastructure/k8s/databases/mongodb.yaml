@@ -172,11 +172,5 @@ data:
     db.conversion_jobs.createIndex({ "status": 1 });
     db.conversion_jobs.createIndex({ "startedAt": -1 });
 
-    // Create GridFS collections for file storage
-    db.createCollection('fs.files');
-    db.createCollection('fs.chunks');
-    db.fs.files.createIndex({ "filename": 1 });
-    db.fs.files.createIndex({ "uploadDate": -1 });
-    db.fs.chunks.createIndex({ "files_id": 1, "n": 1 }, { unique: true });
 
     print('MongoDB initialization completed successfully');

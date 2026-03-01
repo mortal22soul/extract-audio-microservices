@@ -11,5 +11,4 @@ This directory contains Kubernetes deployment manifests for all services.
 
 ## Deployment
 
-Use Helm charts in the `helm/` directory for production deployments.
-For local development, use Tilt.dev configuration in the root directory.
+Apply manifests directly with kubectl, or use Tilt.dev for local development (see root `Tiltfile`).

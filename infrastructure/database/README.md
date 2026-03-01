@@ -1,6 +1,8 @@
 # Database Infrastructure
 
-This directory contains the complete database infrastructure setup for the video converter microservices system. The infrastructure includes PostgreSQL, MongoDB, Redis, and RabbitMQ with proper configuration, initialization scripts, and Docker Compose orchestration.
+This directory contains the complete database infrastructure setup for the video converter
+microservices system. The infrastructure includes PostgreSQL, MongoDB, Redis, and RabbitMQ with
+proper configuration, initialization scripts, and Docker Compose orchestration.
 
 ## Architecture Overview
 
@@ -8,9 +10,9 @@ This directory contains the complete database infrastructure setup for the video
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   PostgreSQL    │    │     MongoDB     │    │      Redis      │    │    RabbitMQ     │
 │                 │    │                 │    │                 │    │                 │
-│ User Auth       │    │ File Storage    │    │ Cache & PubSub  │    │ Message Queue   │
-│ Sessions        │    │ GridFS          │    │ Sessions        │    │ Async Tasks     │
-│ Structured Data │    │ Video Metadata  │    │ Rate Limiting   │    │ Dead Letters    │
+│ User Auth       │    │ Video Metadata  │    │ Cache & PubSub  │    │ Message Queue   │
+│ Sessions        │    │ Conversion Jobs │    │ Sessions        │    │ Async Tasks     │
+│ Structured Data │    │ Analytics Data  │    │ Rate Limiting   │    │ Dead Letters    │
 └─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
@@ -30,11 +32,10 @@ This directory contains the complete database infrastructure setup for the video
 
 ### MongoDB (Port 27017)
 
-- **Purpose**: File storage with GridFS and video metadata
+- **Purpose**: Video metadata and conversion job tracking
 - **Database**: `video_converter`
 - **User**: `app_user` / `dev_password_123`
 - **Features**:
-  - GridFS for large file storage (videos and converted MP3s)
   - Video metadata and analytics data
   - Conversion job tracking
   - Schema validation with MongoDB validators
@@ -138,8 +139,6 @@ CREATE TABLE user_sessions (
 - **videos**: Video metadata and processing status
 - **conversion_jobs**: Video processing job tracking
 - **analytics_data**: ML analysis results
-- **fs.files**: GridFS file metadata
-- **fs.chunks**: GridFS file chunks
 
 ### Redis Data Structures
 
@@ -205,7 +204,6 @@ MongoDB uses initialization scripts that run automatically:
 
 - `init.js`: Creates collections, indexes, and users
 - `seed.js`: Inserts sample data
-- `gridfs-setup.js`: Configures GridFS collections
 
 ## Configuration
 

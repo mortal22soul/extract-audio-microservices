@@ -26,6 +26,7 @@ secrets/
 *.exe
 *.exe~
 *.dll
+notification
 *.so
 *.dylib
 bin/

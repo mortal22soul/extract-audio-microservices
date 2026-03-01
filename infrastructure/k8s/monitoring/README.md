@@ -268,10 +268,6 @@ Prometheus data is stored in `/prometheus/` directory. Use persistent volumes fo
 
 ## Integration with CI/CD
 
-### Helm Integration
-
-The monitoring stack can be deployed using Helm charts for better configuration management.
-
 ### GitOps Integration
 
 Use ArgoCD or Flux to manage monitoring stack deployments with GitOps practices.

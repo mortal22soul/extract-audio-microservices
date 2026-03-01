@@ -6,13 +6,20 @@ import (
 )
 
 type Config struct {
-	Port         string
-	MongoURI     string
-	AuthGRPCAddr string
+	Port              string
+	MongoURI          string
+	AuthGRPCAddr      string
 	AnalyticsGRPCAddr string
-	JWTSecret    string
-	MaxFileSize  int64
-	RateLimit    RateLimitConfig
+	JWTSecret         string
+	MaxFileSize       int64
+	RateLimit         RateLimitConfig
+
+	// MinIO configuration
+	MinIOEndpoint  string
+	MinIOAccessKey string
+	MinIOSecretKey string
+	MinIOBucket    string
+	MinIOUseSSL    bool
 }
 
 type RateLimitConfig struct {
@@ -36,6 +43,11 @@ func Load() *Config {
 			RequestsPerMinute: rateLimit,
 			BurstSize:         burstSize,
 		},
+		MinIOEndpoint:  getEnv("MINIO_ENDPOINT", "localhost:9000"),
+		MinIOAccessKey: getEnv("MINIO_ACCESS_KEY", "admin"),
+		MinIOSecretKey: getEnv("MINIO_SECRET_KEY", "dev123456"),
+		MinIOBucket:    getEnv("MINIO_BUCKET", "videos"),
+		MinIOUseSSL:    getEnv("MINIO_USE_SSL", "false") == "true",
 	}
 }
 

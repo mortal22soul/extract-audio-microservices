@@ -12,7 +12,7 @@ class Config:
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
     
     # MongoDB configuration
-    MONGODB_URL: str = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+    MONGODB_URL: str = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
     MONGODB_DATABASE: str = os.getenv("MONGODB_DATABASE", "video_converter")
     
     # Redis configuration
@@ -36,6 +36,9 @@ class Config:
     THUMBNAIL_COUNT: int = int(os.getenv("THUMBNAIL_COUNT", "5"))
     THUMBNAIL_WIDTH: int = int(os.getenv("THUMBNAIL_WIDTH", "320"))
     THUMBNAIL_HEIGHT: int = int(os.getenv("THUMBNAIL_HEIGHT", "240"))
+
+    # CORS configuration
+    CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001")
 
 
 config = Config()

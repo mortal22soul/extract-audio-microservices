@@ -76,15 +76,20 @@ func (mc *MongoClient) GetVideo(ctx context.Context, videoID string) (*models.Vi
 	return &video, nil
 }
 
-func (mc *MongoClient) GetUserVideos(ctx context.Context, userID string, limit, skip int) ([]models.Video, error) {
+func (mc *MongoClient) GetUserVideos(ctx context.Context, userID string, limit, skip int, status string) ([]models.Video, error) {
 	collection := mc.database.Collection("videos")
+
+	filter := bson.M{"userId": userID}
+	if status != "" {
+		filter["status"] = status
+	}
 
 	opts := options.Find().
 		SetSort(bson.D{{Key: "uploadedAt", Value: -1}}).
 		SetLimit(int64(limit)).
 		SetSkip(int64(skip))
 
-	cursor, err := collection.Find(ctx, bson.M{"userId": userID}, opts)
+	cursor, err := collection.Find(ctx, filter, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list videos: %w", err)
 	}

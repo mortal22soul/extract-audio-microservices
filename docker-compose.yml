@@ -2,22 +2,6 @@ version: '3.8'
 
 services:
   # Databases
-  postgresql:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_DB: videoconverter
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: dev123
-    ports:
-      - '5432:5432'
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   mongodb:
     image: mongo:7
     environment:
@@ -87,12 +71,16 @@ services:
       dockerfile: Dockerfile.dev
     environment:
       GRPC_PORT: 50051
-      DATABASE_URL: postgres://postgres:dev123@postgresql:5432/videoconverter?sslmode=disable
-      JWT_SECRET: dev-jwt-secret-change-in-production
+      MONGODB_URI: mongodb://admin:dev123@mongodb:27017/auth?authSource=admin
+      MONGODB_NAME: auth
+      REDIS_URL: redis://:dev123@redis:6379
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-in-production}
     ports:
       - '50051:50051'
     depends_on:
-      postgresql:
+      mongodb:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     volumes:
       - ./services/auth:/app
@@ -108,6 +96,8 @@ services:
       REDIS_URL: redis://:dev123@redis:6379
       AUTH_SERVICE_URL: auth-service:50051
       ANALYTICS_SERVICE_URL: analytics-service:8000
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-in-production}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: admin
       MINIO_SECRET_KEY: dev123456
@@ -181,6 +171,7 @@ services:
       MONGODB_URI: mongodb://admin:dev123@mongodb:27017/videoconverter?authSource=admin
       RABBITMQ_URL: amqp://admin:dev123@rabbitmq:5672/
       REDIS_URL: redis://:dev123@redis:6379
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
     ports:
       - '8000:8000'
     depends_on:
@@ -201,7 +192,7 @@ services:
     environment:
       PORT: 3001
       REDIS_URL: redis://:dev123@redis:6379
-      JWT_SECRET: dev-jwt-secret-change-in-production
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-in-production}
     ports:
       - '3001:3001'
     depends_on:
@@ -230,7 +221,6 @@ services:
     restart: unless-stopped
 
 volumes:
-  postgres_data:
   mongodb_data:
   redis_data:
   rabbitmq_data:

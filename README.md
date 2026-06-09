@@ -131,11 +131,11 @@ make format
 
 - **Go 1.21+** - High-performance backend services
 - **gRPC** - Inter-service communication
-- **PostgreSQL** - User data and authentication
-- **MongoDB** - Video metadata and conversion job documents
-- **MinIO** - S3-compatible object storage for video and MP3 files
-- **Redis** - Caching and pub/sub
-- **RabbitMQ** - Message queuing
+- **Data Stores**:
+  - **MongoDB**: Users, sessions, video metadata, and conversion job status
+  - **Redis**: Session caching, rate limiting, and real-time messaging
+  - **RabbitMQ**: Asynchronous task queues for video processing
+  - **MinIO**: Object storage for original and converted video files
 - **FFmpeg** - Video processing
 
 ### Frontend & Real-time

@@ -36,7 +36,7 @@ func main() {
 	)
 
 	// Create HTTP server for health checks
-	httpServer := server.New(8080, healthChecker)
+	httpServer := server.New(8082, healthChecker)
 
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())

@@ -41,7 +41,7 @@ func Load() *Config {
 		ConversionQueue:      getEnv("CONVERSION_QUEUE", "video.conversion"),
 		NotificationExchange: getEnv("NOTIFICATION_EXCHANGE", "notifications"),
 
-		MongoURL: getEnv("MONGO_URL", "mongodb://localhost:27017"),
+		MongoURL: getEnv("MONGODB_URI", "mongodb://localhost:27017"),
 		MongoDB:  getEnv("MONGO_DB", "video_converter"),
 
 		RedisURL: getEnv("REDIS_URL", "redis://localhost:6379"),

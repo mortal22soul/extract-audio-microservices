@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
 
+	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"gorm.io/gorm"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 
 	pb "github.com/video-converter/shared/proto/gen/go/shared/proto"
 	"github.com/video-converter/auth/internal/auth"
@@ -23,12 +24,17 @@ type AuthServer struct {
 	rateLimiter *auth.RateLimiter
 }
 
-// New creates a new AuthServer
-func New(db *gorm.DB) *AuthServer {
-	return &AuthServer{
-		userService: service.NewUserService(db),
-		rateLimiter: auth.NewRateLimiter(),
+// New creates a new AuthServer with Redis-backed rate limiting and token blacklist
+func New(client *mongo.Client, dbName string, redisClient *redis.Client) (*AuthServer, error) {
+	userSvc, err := service.NewUserService(client, dbName, redisClient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create user service: %w", err)
 	}
+
+	return &AuthServer{
+		userService: userSvc,
+		rateLimiter: auth.NewRateLimiter(redisClient),
+	}, nil
 }
 
 // ValidateToken validates a JWT token and returns user information
@@ -49,7 +55,7 @@ func (s *AuthServer) ValidateToken(ctx context.Context, req *pb.TokenRequest) (*
 
 	return &pb.TokenResponse{
 		Valid:  true,
-		UserId: fmt.Sprintf("%d", user.ID),
+		UserId: user.ID.Hex(),
 		Email:  user.Email,
 		ExpiresAt: &pb.Timestamp{
 			Seconds: 0, // We don't track individual token expiry in response
@@ -64,19 +70,19 @@ func (s *AuthServer) GetUserInfo(ctx context.Context, req *pb.UserRequest) (*pb.
 		return nil, status.Error(codes.InvalidArgument, "user_id is required")
 	}
 
-	userID, err := strconv.ParseUint(req.UserId, 10, 32)
+	userID, err := primitive.ObjectIDFromHex(req.UserId)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid user_id format")
 	}
 
-	user, err := s.userService.GetUserByID(uint(userID))
+	user, err := s.userService.GetUserByID(userID)
 	if err != nil {
 		log.Printf("Failed to get user info: %v", err)
 		return nil, status.Error(codes.NotFound, "user not found")
 	}
 
 	return &pb.UserResponse{
-		UserId:    fmt.Sprintf("%d", user.ID),
+		UserId:    user.ID.Hex(),
 		Email:     user.Email,
 		FirstName: user.FirstName,
 		LastName:  user.LastName,
@@ -197,10 +203,10 @@ func (s *AuthServer) RegisterUser(ctx context.Context, req *pb.RegisterRequest) 
 		}, nil
 	}
 
-	log.Printf("User registered successfully: %s (ID: %d)", user.Email, user.ID)
+	log.Printf("User registered successfully: %s (ID: %s)", user.Email, user.ID.Hex())
 	return &pb.RegisterResponse{
 		Success: true,
-		UserId:  fmt.Sprintf("%d", user.ID),
+		UserId:  user.ID.Hex(),
 		Message: "User registered successfully",
 	}, nil
 }
@@ -293,13 +299,13 @@ func (s *AuthServer) LoginUser(ctx context.Context, req *pb.LoginRequest) (*pb.L
 
 	// Record successful login (resets rate limiting)
 	s.rateLimiter.RecordSuccess(email)
-	log.Printf("User logged in successfully: %s (ID: %d)", user.Email, user.ID)
+	log.Printf("User logged in successfully: %s (ID: %s)", user.Email, user.ID.Hex())
 	return &pb.LoginResponse{
 		Success:      true,
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		User: &pb.UserResponse{
-			UserId:    fmt.Sprintf("%d", user.ID),
+			UserId:    user.ID.Hex(),
 			Email:     user.Email,
 			FirstName: user.FirstName,
 			LastName:  user.LastName,

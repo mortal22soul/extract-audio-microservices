@@ -262,7 +262,35 @@ db.fs.files.createIndex({ uploadDate: -1 });
 db.fs.files.createIndex({ "metadata.userId": 1 });
 db.fs.files.createIndex({ "metadata.contentType": 1 });
 
+// Switch to Auth database and configure collections
+authDb = db.getSiblingDB("auth");
+
+authDb.createCollection("users", {
+  validator: {
+    $jsonSchema: {
+      bsonType: "object",
+      required: ["email", "password_hash"],
+      properties: {
+        email: { bsonType: "string" },
+        password_hash: { bsonType: "string" },
+      }
+    }
+  }
+});
+
+authDb.createCollection("user_sessions", {
+  validator: {
+    $jsonSchema: {
+      bsonType: "object",
+      required: ["user_id", "token_hash", "expires_at"],
+    }
+  }
+});
+
+authDb.users.createIndex({ email: 1 }, { unique: true });
+authDb.user_sessions.createIndex({ user_id: 1 });
+authDb.user_sessions.createIndex({ token_hash: 1 }, { unique: true });
+
 print("MongoDB initialization completed successfully");
-print("Created collections: videos, conversion_jobs, analytics_data");
-print("Created user: app_user with readWrite permissions");
+print("Created databases: video_converter, auth");
 print("Created indexes for optimal query performance");

@@ -1,143 +1,142 @@
 package auth
 
 import (
+	"context"
+	"fmt"
+	"strconv"
 	"sync"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
-// LoginAttempt represents a login attempt
-type LoginAttempt struct {
-	Count     int
-	LastTry   time.Time
-	BlockedAt time.Time
-}
+const (
+	rateLimiterPrefix   = "auth:ratelimit:"
+	maxFailedAttempts   = 5
+	lockoutDuration     = 15 * time.Minute
+	failedAttemptExpiry = 30 * time.Minute
+)
 
-// RateLimiter handles rate limiting for login attempts
+// RateLimiter tracks failed login attempts using Redis
 type RateLimiter struct {
-	attempts map[string]*LoginAttempt
-	mutex    sync.RWMutex
-	
-	maxAttempts   int
-	blockDuration time.Duration
-	windowSize    time.Duration
+	client *redis.Client
+	mu     sync.RWMutex
 }
 
-// NewRateLimiter creates a new rate limiter
-func NewRateLimiter() *RateLimiter {
-	rl := &RateLimiter{
-		attempts:      make(map[string]*LoginAttempt),
-		maxAttempts:   5,                // Max 5 attempts
-		blockDuration: 15 * time.Minute, // Block for 15 minutes
-		windowSize:    5 * time.Minute,  // Reset counter every 5 minutes
+// NewRateLimiter creates a new Redis-backed rate limiter
+func NewRateLimiter(client *redis.Client) *RateLimiter {
+	return &RateLimiter{
+		client: client,
 	}
-
-	// Start cleanup goroutine
-	go rl.cleanup()
-	
-	return rl
 }
 
-// IsBlocked checks if an IP/email is currently blocked
-func (rl *RateLimiter) IsBlocked(key string) bool {
-	rl.mutex.RLock()
-	defer rl.mutex.RUnlock()
+// RecordAttempt increments the failed attempt counter for an identifier.
+// Returns true if the identifier is now blocked.
+func (rl *RateLimiter) RecordAttempt(identifier string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
 
-	attempt, exists := rl.attempts[key]
-	if !exists {
+	ctx := context.Background()
+	key := rateLimiterPrefix + identifier
+
+	pipe := rl.client.Pipeline()
+	incrCmd := pipe.Incr(ctx, key)
+	pipe.Expire(ctx, key, failedAttemptExpiry)
+	if _, err := pipe.Exec(ctx); err != nil {
+		fmt.Printf("Failed to record failed attempt in Redis: %v\n", err)
 		return false
 	}
 
-	// Check if still blocked
-	if !attempt.BlockedAt.IsZero() && time.Since(attempt.BlockedAt) < rl.blockDuration {
+	count := incrCmd.Val()
+	if count >= int64(maxFailedAttempts) {
+		// Enforce lockout TTL
+		rl.client.Expire(ctx, key, lockoutDuration)
 		return true
 	}
 
 	return false
 }
 
-// RecordAttempt records a failed login attempt
-func (rl *RateLimiter) RecordAttempt(key string) bool {
-	rl.mutex.Lock()
-	defer rl.mutex.Unlock()
+// RecordSuccess clears the failed attempt counter (called on successful login)
+func (rl *RateLimiter) RecordSuccess(identifier string) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
 
-	now := time.Now()
-	attempt, exists := rl.attempts[key]
+	ctx := context.Background()
+	key := rateLimiterPrefix + identifier
 
-	if !exists {
-		rl.attempts[key] = &LoginAttempt{
-			Count:   1,
-			LastTry: now,
-		}
-		return false // Not blocked yet
+	if err := rl.client.Del(ctx, key).Err(); err != nil {
+		fmt.Printf("Failed to reset rate limit in Redis: %v\n", err)
 	}
+}
 
-	// Reset counter if window has passed
-	if time.Since(attempt.LastTry) > rl.windowSize {
-		attempt.Count = 1
-		attempt.LastTry = now
-		attempt.BlockedAt = time.Time{} // Clear block
+// IsBlocked checks if an identifier has exceeded the max failed attempts
+func (rl *RateLimiter) IsBlocked(identifier string) bool {
+	rl.mu.RLock()
+	defer rl.mu.RUnlock()
+
+	ctx := context.Background()
+	key := rateLimiterPrefix + identifier
+
+	val, err := rl.client.Get(ctx, key).Result()
+	if err == redis.Nil {
+		return false
+	}
+	if err != nil {
+		fmt.Printf("Failed to check rate limit in Redis: %v\n", err)
 		return false
 	}
 
-	// Increment attempt count
-	attempt.Count++
-	attempt.LastTry = now
-
-	// Block if max attempts reached
-	if attempt.Count >= rl.maxAttempts {
-		attempt.BlockedAt = now
-		return true // Now blocked
+	count, err := strconv.Atoi(val)
+	if err != nil {
+		return false
 	}
 
-	return false // Not blocked yet
+	return count >= maxFailedAttempts
 }
 
-// RecordSuccess records a successful login (resets counter)
-func (rl *RateLimiter) RecordSuccess(key string) {
-	rl.mutex.Lock()
-	defer rl.mutex.Unlock()
+// GetRemainingAttempts returns how many login attempts remain before lockout
+func (rl *RateLimiter) GetRemainingAttempts(identifier string) int {
+	rl.mu.RLock()
+	defer rl.mu.RUnlock()
 
-	delete(rl.attempts, key)
-}
+	ctx := context.Background()
+	key := rateLimiterPrefix + identifier
 
-// GetRemainingAttempts returns the number of remaining attempts
-func (rl *RateLimiter) GetRemainingAttempts(key string) int {
-	rl.mutex.RLock()
-	defer rl.mutex.RUnlock()
-
-	attempt, exists := rl.attempts[key]
-	if !exists {
-		return rl.maxAttempts
+	val, err := rl.client.Get(ctx, key).Result()
+	if err != nil {
+		return maxFailedAttempts
 	}
 
-	// Reset if window has passed
-	if time.Since(attempt.LastTry) > rl.windowSize {
-		return rl.maxAttempts
+	count, err := strconv.Atoi(val)
+	if err != nil {
+		return maxFailedAttempts
 	}
 
-	remaining := rl.maxAttempts - attempt.Count
+	remaining := maxFailedAttempts - count
 	if remaining < 0 {
 		return 0
 	}
 	return remaining
 }
 
-// cleanup removes old entries periodically
-func (rl *RateLimiter) cleanup() {
-	ticker := time.NewTicker(10 * time.Minute)
-	defer ticker.Stop()
+// GetFailedAttempts returns the current failed attempt count for an identifier
+func (rl *RateLimiter) GetFailedAttempts(identifier string) int {
+	rl.mu.RLock()
+	defer rl.mu.RUnlock()
 
-	for range ticker.C {
-		rl.mutex.Lock()
-		
-		for key, attempt := range rl.attempts {
-			// Remove entries that are old and not blocked, or blocks that have expired
-			if (time.Since(attempt.LastTry) > rl.windowSize && attempt.BlockedAt.IsZero()) ||
-			   (!attempt.BlockedAt.IsZero() && time.Since(attempt.BlockedAt) > rl.blockDuration) {
-				delete(rl.attempts, key)
-			}
-		}
-		
-		rl.mutex.Unlock()
+	ctx := context.Background()
+	key := rateLimiterPrefix + identifier
+
+	val, err := rl.client.Get(ctx, key).Result()
+	if err != nil {
+		return 0
 	}
+
+	count, err := strconv.Atoi(val)
+	if err != nil {
+		return 0
+	}
+
+	return count
 }

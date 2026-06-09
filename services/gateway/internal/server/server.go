@@ -7,10 +7,12 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 
+	pb "github.com/video-converter/shared/proto/gen/go/shared/proto"
 	"github.com/video-converter/gateway/internal/clients"
 	"github.com/video-converter/gateway/internal/config"
 	"github.com/video-converter/gateway/internal/middleware"
@@ -78,7 +80,7 @@ func New() *Server {
 	router.Use(middleware.SecurityHeaders())
 	router.Use(middleware.Logger())
 	router.Use(middleware.Recovery())
-	router.Use(middleware.CORS())
+	router.Use(middleware.CORS(cfg.CORSOrigins))
 	router.Use(rateLimiter.Middleware())
 
 	server := &Server{
@@ -183,8 +185,8 @@ func (s *Server) login(c *gin.Context) {
 		return
 	}
 
-	// For now, return a stub response since gRPC is disabled
-	if s.grpcClients == nil {
+	// Call auth service via gRPC
+	if s.grpcClients == nil || s.grpcClients.Auth == nil {
 		c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
 			Error: "Authentication service unavailable",
 			Code:  "AUTH_SERVICE_UNAVAILABLE",
@@ -192,14 +194,43 @@ func (s *Server) login(c *gin.Context) {
 		return
 	}
 
-	// Will call auth service via gRPC when proto issues are resolved
-	// For now, return a mock successful login
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+
+	resp, err := s.grpcClients.Auth.LoginUser(ctx, &pb.LoginRequest{
+		Email:    req.Email,
+		Password: req.Password,
+	})
+	if err != nil {
+		log.Printf("gRPC login error: %v", err)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error: "Login service error",
+			Code:  "AUTH_SERVICE_ERROR",
+		})
+		return
+	}
+
+	if !resp.Success {
+		errorMsg := "Invalid credentials"
+		if resp.Error != nil {
+			errorMsg = resp.Error.Message
+		}
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse{
+			Error: errorMsg,
+			Code:  "AUTH_FAILED",
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"success":      true,
-		"access_token": "mock-jwt-token",
+		"success":       true,
+		"access_token":  resp.AccessToken,
+		"refresh_token": resp.RefreshToken,
 		"user": gin.H{
-			"id":    "mock-user-id",
-			"email": req.Email,
+			"id":         resp.User.UserId,
+			"email":      resp.User.Email,
+			"first_name": resp.User.FirstName,
+			"last_name":  resp.User.LastName,
 		},
 	})
 }
@@ -225,8 +256,8 @@ func (s *Server) register(c *gin.Context) {
 		return
 	}
 
-	// For now, return a stub response since gRPC is disabled
-	if s.grpcClients == nil {
+	// Call auth service via gRPC
+	if s.grpcClients == nil || s.grpcClients.Auth == nil {
 		c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
 			Error: "Authentication service unavailable",
 			Code:  "AUTH_SERVICE_UNAVAILABLE",
@@ -234,12 +265,40 @@ func (s *Server) register(c *gin.Context) {
 		return
 	}
 
-	// Will call auth service via gRPC when proto issues are resolved
-	// For now, return a mock successful registration
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+
+	resp, err := s.grpcClients.Auth.RegisterUser(ctx, &pb.RegisterRequest{
+		Email:     req.Email,
+		Password:  req.Password,
+		FirstName: req.FirstName,
+		LastName:  req.LastName,
+	})
+	if err != nil {
+		log.Printf("gRPC register error: %v", err)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error: "Registration service error",
+			Code:  "AUTH_SERVICE_ERROR",
+		})
+		return
+	}
+
+	if !resp.Success {
+		errorMsg := "Registration failed"
+		if resp.Error != nil {
+			errorMsg = resp.Error.Message
+		}
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error: errorMsg,
+			Code:  "REGISTRATION_FAILED",
+		})
+		return
+	}
+
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
-		"user_id": "mock-user-id",
-		"message": "User registered successfully",
+		"user_id": resp.UserId,
+		"message": resp.Message,
 	})
 }
 
@@ -373,7 +432,7 @@ func (s *Server) listVideos(c *gin.Context) {
 		return
 	}
 
-	videos, err := s.mongodb.GetUserVideos(c.Request.Context(), userID.(string), limit, offset)
+	videos, err := s.mongodb.GetUserVideos(c.Request.Context(), userID.(string), limit, offset, status)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error: "Failed to retrieve videos",
@@ -382,17 +441,9 @@ func (s *Server) listVideos(c *gin.Context) {
 		return
 	}
 
-	// Simple status filter (since GetUserVideos doesn't accept status filter right now)
-	var filteredVideos []models.Video
-	for _, v := range videos {
-		if status == "" || v.Status == status {
-			filteredVideos = append(filteredVideos, v)
-		}
-	}
-
 	c.JSON(http.StatusOK, models.VideoListResponse{
-		Videos: filteredVideos,
-		Total:  len(filteredVideos),
+		Videos: videos,
+		Total:  len(videos),
 	})
 }
 
@@ -614,30 +665,39 @@ func (s *Server) getUserProfile(c *gin.Context) {
 
 	userEmail, _ := c.Get("userEmail")
 
-	// For now, return stub data since gRPC is disabled
-	if s.grpcClients == nil {
+	if s.grpcClients == nil || s.grpcClients.Auth == nil {
+		// Return basic info from JWT claims if auth service is unavailable
 		c.JSON(http.StatusOK, gin.H{
-			"user_id":    userID,
-			"email":      userEmail,
-			"first_name": "Stub",
-			"last_name":  "User",
-			"is_active":  true,
+			"user_id": userID,
+			"email":   userEmail,
 		})
 		return
 	}
 
-	// Will call auth service via gRPC to get full user profile
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	resp, err := s.grpcClients.Auth.GetUserInfo(ctx, &pb.UserRequest{UserId: userID.(string)})
+	if err != nil {
+		log.Printf("gRPC get user info error: %v", err)
+		// Fall back to JWT claims
+		c.JSON(http.StatusOK, gin.H{
+			"user_id": userID,
+			"email":   userEmail,
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"user_id":    userID,
-		"email":      userEmail,
-		"first_name": "Stub",
-		"last_name":  "User",
-		"is_active":  true,
+		"user_id":    resp.UserId,
+		"email":      resp.Email,
+		"first_name": resp.FirstName,
+		"last_name":  resp.LastName,
+		"is_active":  resp.IsActive,
 	})
 }
 
 func (s *Server) logout(c *gin.Context) {
-	// Extract token from Authorization header
 	authHeader := c.GetHeader("Authorization")
 	if authHeader == "" {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
@@ -647,8 +707,19 @@ func (s *Server) logout(c *gin.Context) {
 		return
 	}
 
-	// For now, return success since gRPC is disabled
-	if s.grpcClients == nil {
+	parts := strings.SplitN(authHeader, " ", 2)
+	accessToken := ""
+	if len(parts) == 2 {
+		accessToken = parts[1]
+	}
+
+	// Parse refresh token from request body
+	var body struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	c.ShouldBindJSON(&body)
+
+	if s.grpcClients == nil || s.grpcClients.Auth == nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"message": "Logged out successfully",
@@ -656,7 +727,25 @@ func (s *Server) logout(c *gin.Context) {
 		return
 	}
 
-	// Will call auth service via gRPC to invalidate token
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	resp, err := s.grpcClients.Auth.LogoutUser(ctx, &pb.LogoutRequest{
+		RefreshToken: body.RefreshToken,
+		AccessToken:  accessToken,
+	})
+	if err != nil {
+		log.Printf("gRPC logout error: %v", err)
+	}
+
+	if resp != nil && !resp.Success {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error: "Logout failed",
+			Code:  "LOGOUT_FAILED",
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Logged out successfully",

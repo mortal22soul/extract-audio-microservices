@@ -7,11 +7,13 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/redis/go-redis/v9"
 )
 
 // JWTClaims represents the claims in a JWT token
 type JWTClaims struct {
-	UserID    uint   `json:"user_id"`
+	UserID    uint   `json:"user_id,omitempty"`
+	UserIDStr string `json:"user_id_str,omitempty"`
 	Email     string `json:"email"`
 	TokenType string `json:"token_type"` // "access" or "refresh"
 	jwt.RegisteredClaims
@@ -25,19 +27,20 @@ type JWTManager struct {
 	blacklist       *TokenBlacklist
 }
 
-// NewJWTManager creates a new JWT manager
-func NewJWTManager() *JWTManager {
+// NewJWTManager creates a new JWT manager with Redis-backed token blacklist.
+// Returns an error if JWT_SECRET is not set.
+func NewJWTManager(redisClient *redis.Client) (*JWTManager, error) {
 	secretKey := os.Getenv("JWT_SECRET")
 	if secretKey == "" {
-		secretKey = "default-secret-key-change-in-production"
+		return nil, fmt.Errorf("JWT_SECRET environment variable is required")
 	}
 
 	return &JWTManager{
 		secretKey:       []byte(secretKey),
 		accessTokenTTL:  15 * time.Minute,  // Access tokens expire in 15 minutes
 		refreshTokenTTL: 7 * 24 * time.Hour, // Refresh tokens expire in 7 days
-		blacklist:       NewTokenBlacklist(),
-	}
+		blacklist:       NewTokenBlacklist(redisClient),
+	}, nil
 }
 
 // GenerateAccessToken generates a new access token
@@ -66,6 +69,32 @@ func (j *JWTManager) GenerateAccessToken(userID uint, email string) (string, tim
 	return tokenString, expiresAt, nil
 }
 
+// GenerateAccessTokenWithID generates a new access token using a string ID
+func (j *JWTManager) GenerateAccessTokenWithID(userID string, email string) (string, time.Time, error) {
+	expiresAt := time.Now().Add(j.accessTokenTTL)
+	
+	claims := JWTClaims{
+		UserIDStr: userID,
+		Email:     email,
+		TokenType: "access",
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expiresAt),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			NotBefore: jwt.NewNumericDate(time.Now()),
+			Issuer:    "video-converter-auth",
+			Subject:   fmt.Sprintf("user:%s", userID),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString(j.secretKey)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("failed to sign access token: %w", err)
+	}
+
+	return tokenString, expiresAt, nil
+}
+
 // GenerateRefreshToken generates a new refresh token
 func (j *JWTManager) GenerateRefreshToken(userID uint, email string) (string, time.Time, error) {
 	expiresAt := time.Now().Add(j.refreshTokenTTL)
@@ -80,6 +109,32 @@ func (j *JWTManager) GenerateRefreshToken(userID uint, email string) (string, ti
 			NotBefore: jwt.NewNumericDate(time.Now()),
 			Issuer:    "video-converter-auth",
 			Subject:   fmt.Sprintf("user:%d", userID),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString(j.secretKey)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("failed to sign refresh token: %w", err)
+	}
+
+	return tokenString, expiresAt, nil
+}
+
+// GenerateRefreshTokenWithID generates a new refresh token using a string ID
+func (j *JWTManager) GenerateRefreshTokenWithID(userID string, email string) (string, time.Time, error) {
+	expiresAt := time.Now().Add(j.refreshTokenTTL)
+	
+	claims := JWTClaims{
+		UserIDStr: userID,
+		Email:     email,
+		TokenType: "refresh",
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expiresAt),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			NotBefore: jwt.NewNumericDate(time.Now()),
+			Issuer:    "video-converter-auth",
+			Subject:   fmt.Sprintf("user:%s", userID),
 		},
 	}
 

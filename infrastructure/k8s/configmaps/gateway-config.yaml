@@ -26,9 +26,8 @@ metadata:
 data:
   PORT: '50051'
   HTTP_PORT: '8081'
-  POSTGRES_HOST: 'postgresql'
-  POSTGRES_PORT: '5432'
-  POSTGRES_DB: 'auth'
+  MONGODB_URI: 'mongodb://admin:dev123@mongodb:27017/auth?authSource=admin'
+  MONGODB_NAME: 'auth'
   JWT_EXPIRY: '24h'
   REFRESH_TOKEN_EXPIRY: '168h'
   BCRYPT_COST: '12'

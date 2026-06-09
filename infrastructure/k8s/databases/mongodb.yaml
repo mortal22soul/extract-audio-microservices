@@ -135,7 +135,6 @@ spec:
         resources:
           requests:
             storage: 20Gi
-        storageClassName: standard
 ---
 apiVersion: v1
 kind: ConfigMap

@@ -6,7 +6,7 @@ metadata:
     app: notification-service
     version: v1
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: notification-service
@@ -56,14 +56,6 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 3
-          securityContext:
-            allowPrivilegeEscalation: false
-            runAsNonRoot: true
-            runAsUser: 1000
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop:
-                - ALL
 ---
 apiVersion: v1
 kind: Service

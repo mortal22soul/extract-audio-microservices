@@ -13,6 +13,7 @@ type Config struct {
 	JWTSecret         string
 	MaxFileSize       int64
 	RateLimit         RateLimitConfig
+	CORSOrigins       string
 
 	// MinIO configuration
 	MinIOEndpoint  string
@@ -34,15 +35,16 @@ func Load() *Config {
 
 	return &Config{
 		Port:              getEnv("PORT", "8080"),
-		MongoURI:          getEnv("MONGO_URI", "mongodb://localhost:27017"),
-		AuthGRPCAddr:      getEnv("AUTH_GRPC_ADDR", "localhost:50051"),
-		AnalyticsGRPCAddr: getEnv("ANALYTICS_GRPC_ADDR", "localhost:50052"),
-		JWTSecret:         getEnv("JWT_SECRET", "your-secret-key"),
+		MongoURI:          getEnv("MONGODB_URI", "mongodb://localhost:27017"),
+		AuthGRPCAddr:      getEnv("AUTH_SERVICE_URL", "localhost:50051"),
+		AnalyticsGRPCAddr: getEnv("ANALYTICS_SERVICE_URL", "localhost:8000"),
+		JWTSecret:         getEnv("JWT_SECRET", ""),
 		MaxFileSize:       maxFileSize,
 		RateLimit: RateLimitConfig{
 			RequestsPerMinute: rateLimit,
 			BurstSize:         burstSize,
 		},
+		CORSOrigins:    getEnv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001"),
 		MinIOEndpoint:  getEnv("MINIO_ENDPOINT", "localhost:9000"),
 		MinIOAccessKey: getEnv("MINIO_ACCESS_KEY", "admin"),
 		MinIOSecretKey: getEnv("MINIO_SECRET_KEY", "dev123456"),

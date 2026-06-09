@@ -139,56 +139,7 @@ func (r *RabbitMQClient) setupInfrastructure() error {
 	return nil
 }
 
-func (r *RabbitMQClient) ConsumeConversionJobs(ctx context.Context, handler func(ConversionMessage) error) error {
-	// Set QoS to limit unacknowledged messages
-	err := r.channel.Qos(1, 0, false)
-	if err != nil {
-		return fmt.Errorf("failed to set QoS: %w", err)
-	}
 
-	msgs, err := r.channel.Consume(
-		r.config.ConversionQueue, // queue
-		"",                       // consumer
-		false,                    // auto-ack
-		false,                    // exclusive
-		false,                    // no-local
-		false,                    // no-wait
-		nil,                      // args
-	)
-	if err != nil {
-		return fmt.Errorf("failed to register consumer: %w", err)
-	}
-
-	log.Printf("Started consuming from queue: %s", r.config.ConversionQueue)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case msg, ok := <-msgs:
-			if !ok {
-				return fmt.Errorf("message channel closed")
-			}
-
-			var conversionMsg ConversionMessage
-			if err := json.Unmarshal(msg.Body, &conversionMsg); err != nil {
-				log.Printf("Failed to unmarshal message: %v", err)
-				msg.Nack(false, false) // Send to dead letter queue
-				continue
-			}
-
-			log.Printf("Processing conversion job: %s", conversionMsg.JobID)
-
-			if err := handler(conversionMsg); err != nil {
-				log.Printf("Failed to process conversion job %s: %v", conversionMsg.JobID, err)
-				msg.Nack(false, false) // Send to dead letter queue
-			} else {
-				msg.Ack(false)
-				log.Printf("Successfully processed conversion job: %s", conversionMsg.JobID)
-			}
-		}
-	}
-}
 
 func (r *RabbitMQClient) PublishNotification(ctx context.Context, notification NotificationMessage) error {
 	body, err := json.Marshal(notification)

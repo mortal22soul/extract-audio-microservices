@@ -1,83 +1,74 @@
 package auth
 
 import (
-	"sync"
+	"context"
+	"fmt"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
-// BlacklistedToken represents a blacklisted token
-type BlacklistedToken struct {
-	TokenHash string
-	ExpiresAt time.Time
-}
+const tokenBlacklistPrefix = "auth:blacklist:"
 
-// TokenBlacklist manages blacklisted tokens
+// TokenBlacklist manages blacklisted tokens using Redis
 type TokenBlacklist struct {
-	tokens map[string]time.Time // token hash -> expiry time
-	mutex  sync.RWMutex
+	client *redis.Client
 }
 
-// NewTokenBlacklist creates a new token blacklist
-func NewTokenBlacklist() *TokenBlacklist {
-	bl := &TokenBlacklist{
-		tokens: make(map[string]time.Time),
+// NewTokenBlacklist creates a new Redis-backed token blacklist
+func NewTokenBlacklist(client *redis.Client) *TokenBlacklist {
+	return &TokenBlacklist{
+		client: client,
 	}
-
-	// Start cleanup goroutine
-	go bl.cleanup()
-
-	return bl
 }
 
-// BlacklistToken adds a token to the blacklist
+// BlacklistToken adds a token hash to the blacklist with an expiry
 func (bl *TokenBlacklist) BlacklistToken(tokenHash string, expiresAt time.Time) {
-	bl.mutex.Lock()
-	defer bl.mutex.Unlock()
+	ctx := context.Background()
+	key := tokenBlacklistPrefix + tokenHash
 
-	bl.tokens[tokenHash] = expiresAt
+	ttl := time.Until(expiresAt)
+	if ttl <= 0 {
+		// Token already expired, no need to blacklist
+		return
+	}
+
+	if err := bl.client.Set(ctx, key, "1", ttl).Err(); err != nil {
+		fmt.Printf("Failed to blacklist token in Redis: %v\n", err)
+	}
 }
 
-// IsBlacklisted checks if a token is blacklisted
+// IsBlacklisted checks if a token hash is in the blacklist
 func (bl *TokenBlacklist) IsBlacklisted(tokenHash string) bool {
-	bl.mutex.RLock()
-	defer bl.mutex.RUnlock()
+	ctx := context.Background()
+	key := tokenBlacklistPrefix + tokenHash
 
-	expiresAt, exists := bl.tokens[tokenHash]
-	if !exists {
+	exists, err := bl.client.Exists(ctx, key).Result()
+	if err != nil {
+		fmt.Printf("Failed to check token blacklist in Redis: %v\n", err)
 		return false
 	}
 
-	// If token has expired, it's effectively not blacklisted anymore
-	if time.Now().After(expiresAt) {
-		return false
-	}
-
-	return true
+	return exists > 0
 }
 
-// cleanup removes expired tokens from the blacklist
-func (bl *TokenBlacklist) cleanup() {
-	ticker := time.NewTicker(10 * time.Minute)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		bl.mutex.Lock()
-		now := time.Now()
-
-		for tokenHash, expiresAt := range bl.tokens {
-			if now.After(expiresAt) {
-				delete(bl.tokens, tokenHash)
-			}
-		}
-
-		bl.mutex.Unlock()
-	}
-}
-
-// GetBlacklistedCount returns the number of blacklisted tokens
+// GetBlacklistedCount returns the approximate number of blacklisted tokens
 func (bl *TokenBlacklist) GetBlacklistedCount() int {
-	bl.mutex.RLock()
-	defer bl.mutex.RUnlock()
+	ctx := context.Background()
 
-	return len(bl.tokens)
+	var count int
+	var cursor uint64
+	for {
+		keys, nextCursor, err := bl.client.Scan(ctx, cursor, tokenBlacklistPrefix+"*", 100).Result()
+		if err != nil {
+			break
+		}
+		count += len(keys)
+		cursor = nextCursor
+		if cursor == 0 {
+			break
+		}
+	}
+
+	return count
 }

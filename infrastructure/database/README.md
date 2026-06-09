@@ -12,23 +12,21 @@ proper configuration, initialization scripts, and Docker Compose orchestration.
 │                 │    │                 │    │                 │    │                 │
 │ User Auth       │    │ Video Metadata  │    │ Cache & PubSub  │    │ Message Queue   │
 │ Sessions        │    │ Conversion Jobs │    │ Sessions        │    │ Async Tasks     │
-│ Structured Data │    │ Analytics Data  │    │ Rate Limiting   │    │ Dead Letters    │
-└─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│     MongoDB     │    │      Redis      │    │    RabbitMQ     │
+│                 │    │                 │    │                 │
+│ Video Metadata  │    │ Cache & PubSub  │    │ Message Queue   │
+│ Conversion Jobs │    │ Sessions        │    │ Async Tasks     │
+│ Analytics Data  │    │ Rate Limiting   │    │ Dead Letters    │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
 ## Services
 
-### PostgreSQL (Port 5432)
-
-- **Purpose**: User authentication, sessions, and structured data
-- **Database**: `video_converter_auth`
-- **User**: `app_user` / `dev_password_123`
-- **Features**:
-  - User authentication schema with bcrypt password hashing
-  - JWT session tracking
-  - Database migrations with golang-migrate
-  - Proper indexes for performance
-  - Seed data for development
+### The system uses a combination of data stores:
+- **MongoDB**: Primary document database for users, sessions, video metadata, conversion jobs, and analytics
+- **Redis**: In-memory data store for caching and pub/sub
+- **MinIO**: S3-compatible object storage for large files (videos, thumbnails)
 
 ### MongoDB (Port 27017)
 
@@ -94,9 +92,6 @@ proper configuration, initialization scripts, and Docker Compose orchestration.
 Each database service can be started individually:
 
 ```bash
-# PostgreSQL only
-docker-compose -f docker/postgresql.yml up -d
-
 # MongoDB only
 docker-compose -f docker/mongodb.yml up -d
 
@@ -109,35 +104,15 @@ docker-compose -f docker/rabbitmq.yml up -d
 
 ## Database Schemas
 
-### PostgreSQL Schema
+### MongoDB
 
-```sql
--- Users table
-CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    first_name VARCHAR(100),
-    last_name VARCHAR(100),
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
+MongoDB is used for storing unstructured and semi-structured data.
 
--- User sessions table
-CREATE TABLE user_sessions (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    token_hash VARCHAR(255) NOT NULL,
-    expires_at TIMESTAMP NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-```
-
-### MongoDB Collections
-
+### Collections
+- **users**: Application users
+- **user_sessions**: Active sessions and tokens
 - **videos**: Video metadata and processing status
-- **conversion_jobs**: Video processing job tracking
+- **conversion_jobs**: Conversion job tracking
 - **analytics_data**: ML analysis results
 
 ### Redis Data Structures

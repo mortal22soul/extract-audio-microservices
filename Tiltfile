@@ -8,7 +8,6 @@ allow_k8s_contexts(['docker-desktop', 'kind-kind', 'minikube'])
 print("Setting up database services...")
 
 k8s_yaml([
-    'infrastructure/k8s/databases/postgresql.yaml',
     'infrastructure/k8s/databases/mongodb.yaml',
     'infrastructure/k8s/databases/redis.yaml',
     'infrastructure/k8s/databases/rabbitmq.yaml',
@@ -120,6 +119,8 @@ docker_build(
 print("Loading Kubernetes manifests...")
 
 k8s_yaml([
+    'infrastructure/k8s/configmaps/gateway-config.yaml',
+    'infrastructure/k8s/secrets/app-secrets.yaml',
     'infrastructure/k8s/services/gateway.yaml',
     'infrastructure/k8s/services/auth.yaml',
     'infrastructure/k8s/services/converter.yaml',
@@ -129,21 +130,23 @@ k8s_yaml([
     'infrastructure/k8s/services/frontend.yaml'
 ])
 
-# Port forwards for local access
-print("Setting up port forwarding...")
+# Resource definitions and port forwards
+print("Setting up resources and port forwarding...")
 
-k8s_resource('gateway-service', port_forwards='8080:8080')
-k8s_resource('frontend-service', port_forwards='3000:3000')
-k8s_resource('realtime-service', port_forwards='3001:3001')
-k8s_resource('analytics-service', port_forwards='8000:8000')
-
-# Resource dependencies
-k8s_resource('gateway-service', resource_deps=['postgresql', 'mongodb', 'redis'])
-k8s_resource('auth-service', resource_deps=['postgresql'])
+# Services
+k8s_resource('gateway-service', port_forwards='8080:8080', resource_deps=['mongodb', 'redis'])
+k8s_resource('frontend-service', port_forwards='3000:3000', resource_deps=['gateway-service', 'realtime-service'])
+k8s_resource('realtime-service', port_forwards='3001:3001', resource_deps=['redis'])
+k8s_resource('analytics-service', port_forwards='8000:8000', resource_deps=['mongodb', 'rabbitmq'])
+k8s_resource('auth-service', resource_deps=['mongodb'])
 k8s_resource('converter-service', resource_deps=['mongodb', 'rabbitmq'])
 k8s_resource('notification-service', resource_deps=['rabbitmq'])
-k8s_resource('analytics-service', resource_deps=['mongodb', 'rabbitmq'])
-k8s_resource('realtime-service', resource_deps=['redis'])
+
+# Infrastructure
+k8s_resource('mongodb', port_forwards='27017:27017')
+k8s_resource('redis', port_forwards='6379:6379')
+k8s_resource('rabbitmq', port_forwards=['5672:5672', '15672:15672'])
+k8s_resource('minio', port_forwards=['9000:9000', '9001:9001'])
 
 print("Tilt configuration loaded successfully!")
 print("Run 'tilt up' to start all services")

@@ -6,7 +6,7 @@ metadata:
     app: analytics-service
     version: v1
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: analytics-service
@@ -69,13 +69,6 @@ spec:
               mountPath: /app/models
             - name: temp-storage
               mountPath: /tmp
-          securityContext:
-            allowPrivilegeEscalation: false
-            runAsNonRoot: true
-            runAsUser: 1000
-            capabilities:
-              drop:
-                - ALL
       volumes:
         - name: model-storage
           emptyDir:

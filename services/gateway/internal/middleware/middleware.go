@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math/rand"
@@ -13,16 +14,15 @@ import (
 	"github.com/gin-gonic/gin"
 	"golang.org/x/time/rate"
 
+	pb "github.com/video-converter/shared/proto/gen/go/shared/proto"
 	"github.com/video-converter/gateway/internal/clients"
 	"github.com/video-converter/gateway/internal/models"
-	// Temporarily commented out due to proto version mismatch
-	// "github.com/video-converter/shared/proto/gen/go/shared/proto"
 )
 
-// CORS middleware
-func CORS() gin.HandlerFunc {
+// CORS middleware with configurable origins
+func CORS(origins string) gin.HandlerFunc {
 	config := cors.DefaultConfig()
-	config.AllowOrigins = []string{"http://localhost:3000", "http://localhost:3001"}
+	config.AllowOrigins = strings.Split(origins, ",")
 	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
 	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization"}
 	config.AllowCredentials = true
@@ -165,6 +165,45 @@ func (rl *RateLimiter) CleanupVisitors() {
 	}()
 }
 
+// validateTokenViaGRPC calls the auth service to validate a JWT token
+func validateTokenViaGRPC(c *gin.Context, grpcClients *clients.GRPCClients, token string) bool {
+	if grpcClients == nil || grpcClients.Auth == nil {
+		c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
+			Error: "Authentication service unavailable",
+			Code:  "AUTH_SERVICE_UNAVAILABLE",
+		})
+		c.Abort()
+		return false
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	resp, err := grpcClients.Auth.ValidateToken(ctx, &pb.TokenRequest{Token: token})
+	if err != nil {
+		log.Printf("gRPC token validation error: %v", err)
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse{
+			Error: "Token validation failed",
+			Code:  "TOKEN_VALIDATION_FAILED",
+		})
+		c.Abort()
+		return false
+	}
+
+	if !resp.Valid {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse{
+			Error: "Invalid or expired token",
+			Code:  "INVALID_TOKEN",
+		})
+		c.Abort()
+		return false
+	}
+
+	c.Set("userID", resp.UserId)
+	c.Set("userEmail", resp.Email)
+	return true
+}
+
 // JWT Authentication middleware
 func JWTAuth(grpcClients *clients.GRPCClients) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -189,22 +228,10 @@ func JWTAuth(grpcClients *clients.GRPCClients) gin.HandlerFunc {
 			return
 		}
 
-		token := parts[1]
-		_ = token // Temporary - avoid unused variable error
-
-		// Temporary stub - validate token via gRPC (disabled)
-		if grpcClients == nil {
-			c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
-				Error: "Authentication service unavailable",
-				Code:  "AUTH_SERVICE_UNAVAILABLE",
-			})
-			c.Abort()
+		if !validateTokenViaGRPC(c, grpcClients, parts[1]) {
 			return
 		}
 
-		// For now, accept any token as valid (development only)
-		c.Set("userID", "stub-user-id")
-		c.Set("userEmail", "stub@example.com")
 		c.Next()
 	}
 }
@@ -224,18 +251,21 @@ func OptionalJWTAuth(grpcClients *clients.GRPCClients) gin.HandlerFunc {
 			return
 		}
 
-		token := parts[1]
-		_ = token // Temporary - avoid unused variable error
-
-		// Temporary stub implementation
-		if grpcClients == nil {
+		// Try to validate, but don't abort on failure for optional auth
+		if grpcClients == nil || grpcClients.Auth == nil {
 			c.Next()
 			return
 		}
 
-		// For now, accept any token as valid (development only)
-		c.Set("userID", "stub-user-id")
-		c.Set("userEmail", "stub@example.com")
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+
+		resp, err := grpcClients.Auth.ValidateToken(ctx, &pb.TokenRequest{Token: parts[1]})
+		if err == nil && resp.Valid {
+			c.Set("userID", resp.UserId)
+			c.Set("userEmail", resp.Email)
+		}
+
 		c.Next()
 	}
 }

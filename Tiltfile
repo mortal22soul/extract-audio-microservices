@@ -2,7 +2,7 @@
 load('ext://restart_process', 'docker_build_with_restart')
 
 # Configure local Kubernetes cluster
-allow_k8s_contexts(['docker-desktop', 'kind-kind', 'minikube'])
+allow_k8s_contexts(['docker-desktop', 'kind-kind', 'minikube', 'microk8s'])
 
 # Database services (deployed via plain Kubernetes manifests)
 print("Setting up database services...")
@@ -20,52 +20,56 @@ print("Setting up Go services...")
 # Gateway Service
 docker_build_with_restart(
     'gateway-service',
-    context='./services/gateway',
+    context='.',
     dockerfile='./services/gateway/Dockerfile.dev',
     entrypoint=['./bin/gateway'],
-    only=['./cmd', './internal', './go.mod', './go.sum'],
+    only=['./services/gateway', './shared'],
     live_update=[
         sync('./services/gateway', '/app'),
-        run('go build -o bin/gateway ./cmd/main.go', trigger=['**/*.go'])
+        sync('./shared', '/shared'),
+        run('go build -o bin/gateway ./cmd/main.go', trigger=['services/gateway/**/*.go', 'shared/**/*.go'])
     ]
 )
 
 # Auth Service
 docker_build_with_restart(
     'auth-service',
-    context='./services/auth',
+    context='.',
     dockerfile='./services/auth/Dockerfile.dev',
     entrypoint=['./bin/auth'],
-    only=['./cmd', './internal', './go.mod', './go.sum'],
+    only=['./services/auth', './shared'],
     live_update=[
         sync('./services/auth', '/app'),
-        run('go build -o bin/auth ./cmd/main.go', trigger=['**/*.go'])
+        sync('./shared', '/shared'),
+        run('go build -o bin/auth ./cmd/main.go', trigger=['services/auth/**/*.go', 'shared/**/*.go'])
     ]
 )
 
 # Converter Service
 docker_build_with_restart(
     'converter-service',
-    context='./services/converter',
+    context='.',
     dockerfile='./services/converter/Dockerfile.dev',
     entrypoint=['./bin/converter'],
-    only=['./cmd', './internal', './go.mod', './go.sum'],
+    only=['./services/converter', './shared'],
     live_update=[
         sync('./services/converter', '/app'),
-        run('go build -o bin/converter ./cmd/main.go', trigger=['**/*.go'])
+        sync('./shared', '/shared'),
+        run('go build -o bin/converter ./cmd/main.go', trigger=['services/converter/**/*.go', 'shared/**/*.go'])
     ]
 )
 
 # Notification Service
 docker_build_with_restart(
     'notification-service',
-    context='./services/notification',
+    context='.',
     dockerfile='./services/notification/Dockerfile.dev',
     entrypoint=['./bin/notification'],
-    only=['./cmd', './internal', './go.mod', './go.sum'],
+    only=['./services/notification', './shared'],
     live_update=[
         sync('./services/notification', '/app'),
-        run('go build -o bin/notification ./cmd/main.go', trigger=['**/*.go'])
+        sync('./shared', '/shared'),
+        run('go build -o bin/notification ./cmd/main.go', trigger=['services/notification/**/*.go', 'shared/**/*.go'])
     ]
 )
 
@@ -103,15 +107,15 @@ docker_build(
 print("Setting up Python service...")
 
 # Analytics Service (FastAPI)
-docker_build(
+docker_build_with_restart(
     'analytics-service',
     context='./services/analytics',
     dockerfile='./services/analytics/Dockerfile.dev',
+    entrypoint=['uv', 'run', 'uvicorn', 'src.main:app', '--host', '0.0.0.0', '--port', '8000', '--reload'],
     live_update=[
         sync('./services/analytics/src', '/app/src'),
         sync('./services/analytics/pyproject.toml', '/app/pyproject.toml'),
-        run('uv sync', trigger=['pyproject.toml']),
-        restart_container()
+        run('uv sync', trigger=['pyproject.toml'])
     ]
 )
 

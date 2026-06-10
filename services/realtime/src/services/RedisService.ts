@@ -9,13 +9,11 @@ export class RedisService {
 
   constructor() {
     this.subscriber = new Redis(config.redisUrl, {
-      retryDelayOnFailover: 100,
       maxRetriesPerRequest: 3,
       lazyConnect: true,
     });
 
     this.publisher = new Redis(config.redisUrl, {
-      retryDelayOnFailover: 100,
       maxRetriesPerRequest: 3,
       lazyConnect: true,
     });

@@ -6,7 +6,7 @@ metadata:
     app: gateway-service
 data:
   PORT: '8080'
-  MONGODB_URI: 'mongodb://mongodb:27017/videoconverter'
+  MONGODB_URI: 'mongodb://mongo_user:mongo_password_123@mongodb:27017/videoconverter'
   REDIS_URL: 'redis://:dev123@redis:6379'
   AUTH_SERVICE_URL: 'auth-service:50051'
   ANALYTICS_SERVICE_URL: 'analytics-service:8000'
@@ -26,8 +26,9 @@ metadata:
 data:
   PORT: '50051'
   HTTP_PORT: '8081'
-  MONGODB_URI: 'mongodb://admin:dev123@mongodb:27017/auth?authSource=admin'
+  MONGODB_URI: 'mongodb://root:mongo_root_password_123@mongodb:27017/auth?authSource=admin'
   MONGODB_NAME: 'auth'
+  REDIS_URL: 'redis://:dev123@redis:6379'
   JWT_EXPIRY: '24h'
   REFRESH_TOKEN_EXPIRY: '168h'
   BCRYPT_COST: '12'
@@ -40,7 +41,7 @@ metadata:
   labels:
     app: converter-service
 data:
-  MONGODB_URI: 'mongodb://mongodb:27017/videoconverter'
+  MONGODB_URI: 'mongodb://mongo_user:mongo_password_123@mongodb:27017/videoconverter'
   RABBITMQ_URL: 'amqp://admin:dev123@rabbitmq:5672/'
   REDIS_URL: 'redis://:dev123@redis:6379'
   WORKER_POOL_SIZE: '5'
@@ -57,7 +58,7 @@ metadata:
     app: analytics-service
 data:
   PORT: '8000'
-  MONGODB_URI: 'mongodb://mongodb:27017/videoconverter'
+  MONGODB_URI: 'mongodb://mongo_user:mongo_password_123@mongodb:27017/videoconverter'
   RABBITMQ_URL: 'amqp://admin:dev123@rabbitmq:5672/'
   REDIS_URL: 'redis://:dev123@redis:6379'
   ML_MODEL_PATH: '/app/models'
@@ -98,6 +99,7 @@ metadata:
   labels:
     app: notification-service
 data:
+  PORT: '8083'
   RABBITMQ_URL: 'amqp://admin:dev123@rabbitmq:5672/'
   SMTP_HOST: 'smtp.gmail.com'
   SMTP_PORT: '587'

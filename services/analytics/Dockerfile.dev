@@ -9,11 +9,13 @@ RUN apt-get update && apt-get install -y \
     libxext6 \
     libfontconfig1 \
     libxrender1 \
-    libgl1-mesa-glx \
+    libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv
 RUN pip install uv
+
+ENV PYTHONPATH=/app/src
 
 # Copy project files
 COPY pyproject.toml uv.lock ./

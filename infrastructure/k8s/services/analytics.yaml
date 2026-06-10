@@ -36,7 +36,7 @@ spec:
           resources:
             requests:
               memory: '1Gi'
-              cpu: '500m'
+              cpu: '50m'
             limits:
               memory: '4Gi'
               cpu: '2000m'
@@ -68,7 +68,7 @@ spec:
             - name: model-storage
               mountPath: /app/models
             - name: temp-storage
-              mountPath: /tmp
+              mountPath: /tmp/data
       volumes:
         - name: model-storage
           emptyDir:

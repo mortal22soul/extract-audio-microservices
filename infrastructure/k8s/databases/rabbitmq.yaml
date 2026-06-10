@@ -25,7 +25,7 @@ data:
 
     # Memory and disk
     vm_memory_high_watermark.relative = 0.6
-    disk_free_limit.relative = 2.0
+    disk_free_limit.absolute = 2GB
 
     # Management plugin
     management.tcp.port = 15672
@@ -126,16 +126,24 @@ spec:
             - secretRef:
                 name: rabbitmq-secret
           env:
+            - name: MY_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MY_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
             - name: RABBITMQ_NODENAME
-              value: 'rabbit@$(hostname -f)'
+              value: 'rabbit@$(MY_POD_NAME)'
             - name: K8S_SERVICE_NAME
               value: 'rabbitmq-headless'
             - name: RABBITMQ_USE_LONGNAME
-              value: 'true'
+              value: 'false'
           resources:
             requests:
               memory: '512Mi'
-              cpu: '500m'
+              cpu: '100m'
             limits:
               memory: '1Gi'
               cpu: '1000m'

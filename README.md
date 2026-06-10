@@ -6,7 +6,7 @@ ML-powered analytics.
 ## Architecture
 
 - **Gateway Service** (Go) - API gateway with authentication and file handling
-- **Auth Service** (Go) - gRPC authentication service with PostgreSQL
+- **Auth Service** (Go) - gRPC authentication service
 - **Converter Service** (Go) - Video-to-MP3 conversion with FFmpeg
 - **Notification Service** (Go) - Email notifications via SMTP
 - **Analytics Service** (Python) - ML-powered video analysis with FastAPI
@@ -56,12 +56,12 @@ docker-compose logs -f
 
 ## Service Endpoints
 
-- **Frontend**: http://localhost:3000
-- **Gateway API**: http://localhost:8080
-- **Analytics API**: http://localhost:8000
-- **Realtime WebSocket**: http://localhost:3001
-- **RabbitMQ Management**: http://localhost:15672 (admin/dev123)
-- **MinIO Console**: http://localhost:9001 (admin/dev123456)
+- **Frontend**: <http://localhost:3000>
+- **Gateway API**: <http://localhost:8080>
+- **Analytics API**: <http://localhost:8000>
+- **Realtime WebSocket**: <http://localhost:3001>
+- **RabbitMQ Management**: <http://localhost:15672> (admin/dev123)
+- **MinIO Console**: <http://localhost:9001> (admin/dev123456)
 
 ## Development
 
@@ -106,7 +106,7 @@ make format
 
 ## Project Structure
 
-```
+```txt
 ├── services/                 # Microservices
 │   ├── gateway/             # Go API gateway
 │   ├── auth/                # Go authentication service
